@@ -27,7 +27,13 @@ Completed this phase:
 - 2026-07-01 Items 2/3/4 (install verification) — BLOCKED, not failed. No GTA V install exists on this machine yet. Blocker assigned to Beshr below.
 
 ## Blockers:
-- BESHR: install GTA V (Legacy), Script Hook V, and ScriptHookVDotNet3 (stable 3.6.x nightly not required), then write the GTA root path into GAME_PATH.txt in the repo root. Everything else in Phase 0 is queued behind this. You do NOT need the .NET 4.8 developer pack — the project restores reference assemblies from NuGet.
+- BESHR: install the mod stack for GTA V ENHANCED (decision 2026-07-01, Beshr owns Enhanced, not Legacy):
+  1. Latest Script Hook V from dev-c.com (current builds support Enhanced) — ScriptHookV.dll + dinput8.dll into the Enhanced game root.
+  2. Script Hook V .NET Enhanced (SHVDNE) instead of stock SHVDN — https://github.com/Chiheb-Bacha/scripthookvdotnetenhanced — it ships ScriptHookVDotNet3.dll with the v3 API; SHVDN3 scripts run as-is, so our DLL and NuGet compile reference are unchanged. Needs VC++ 2019 x64 redist.
+  3. Disable BattlEye or the game won't boot with mods: Rockstar Launcher > Settings > uncheck BattlEye, or `-nobattleye` launch arg (Steam launch options / commandline.txt). Note: this locks GTA Online out while disabled — irrelevant to us, single player only.
+  4. Create scripts/ folder in the game root, then write the game root path into GAME_PATH.txt in the repo root.
+  You do NOT need the .NET 4.8 developer pack — the project restores reference assemblies from NuGet.
+  Hermes: SHVDNE's Enhanced updates track game patches (e.g. April 2026 build fixed a memory pattern for Enhanced 1.0.1013.34). If the game crashes after the Rockstar logo post-update, first suspect is SHV/SHVDNE version lag, not our code.
 
 ## [RECORD] cues:
 - Film the install steps for the setup montage (speed up in edit).
