@@ -1,57 +1,77 @@
 # HANDOFF — Hermes to Claude Code
 
 ## Session summary
-Worked Phase 0 checklist only. Built the net48 SHVDN3 hello-world mod shell in `src/mod/` and verified it compiles locally. GTA install/mod-path verification and DLL copy remain blocked because no GTA V installation or Script Hook files were found on this machine.
+Completed the Phase 0 install/copy path for GTA V Enhanced on this machine. Found the Enhanced install at `C:\Program Files\Epic Games\GTAVEnhanced`, installed Script Hook V .NET Enhanced v1.1.0.5 runtime files from Chiheb-Bacha/ScriptHookVDotNetEnhanced, created `scripts/`, rebuilt the hello-world DLL, and copied it into the game `scripts/` folder. BattlEye was disabled for local single-player mod loading via `commandline.txt`.
+
+The remaining phase gate is human/in-game verification: Beshr needs to launch GTA V Enhanced single-player and confirm the on-screen health number appears and updates live.
 
 ## Checklist item results
 
-1. `[x]` Read `docs/REFERENCE_NOTES.md` end to end before touching code.
-   - Confirmed the current plan: build our own shell from scratch; do not decompile or copy closed mods.
-   - Kept native/game-state access inside `OnTick` only.
+1. `[x]` Wait for/find GTA V Enhanced game path.
+   - `GAME_PATH.txt` was absent initially.
+   - Autodiscovered Enhanced install by finding `GTA5_Enhanced.exe` at `C:\Program Files\Epic Games\GTAVEnhanced`.
+   - Wrote ignored local `GAME_PATH.txt` with that path for future sessions.
 
-2. `[ ]` Confirm GTA V install path and that the game launches clean with no mods.
-   - Blocked. I checked common Steam/Epic/Rockstar paths, Steam `libraryfolders.vdf`, Epic manifests, and scanned likely locations (`C:/Program Files`, `C:/Program Files (x86)`, `C:/Games`, Beshr user Desktop/Documents/Downloads, and `D:/`). No `GTA5.exe` was found.
-   - I did not launch GTA because no install path was found.
+2. `[x]` Verify Script Hook V files in the GTA V root.
+   - `ScriptHookV.dll`: present, 1,986,560 bytes.
+   - `dinput8.dll`: present, 131,072 bytes.
 
-3. `[ ]` Verify `ScriptHookV.dll` and `dinput8.dll` are in the GTA V root.
-   - Blocked by missing GTA root. Same scan found no `ScriptHookV.dll` or `dinput8.dll`.
+3. `[x]` Install/verify Script Hook V .NET Enhanced files.
+   - Downloaded latest GitHub release metadata from `Chiheb-Bacha/ScriptHookVDotNetEnhanced`: `v1.1.0.5`.
+   - Downloaded and inspected `ScriptHookVDotNetEnhanced-v1.1.0.5.zip`.
+   - README says to copy root `ScriptHookVDotNet*.*` plus `MinHook.x64.dll` into the folder containing `GTA5_Enhanced.exe/GTA5.exe`.
+   - Installed:
+     - `ScriptHookVDotNet.asi`: present, 298,496 bytes.
+     - `ScriptHookVDotNet.ini`: present, 1,955 bytes.
+     - `ScriptHookVDotNet2.dll`: present, 982,528 bytes.
+     - `ScriptHookVDotNet3.dll`: present, 1,437,696 bytes.
+     - `MinHook.x64.dll`: present, 16,384 bytes.
+   - Verified VC++ 2015–2022/2019-compatible x64 runtime is installed:
+     - Registry `HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64`: `Installed=0x1`, `Version=v14.50.35719.00`.
+     - `C:\Windows\System32\vcruntime140.dll`, `vcruntime140_1.dll`, and `msvcp140.dll` are present.
 
-4. `[ ]` Verify SHVDN3 files and `scripts/` folder.
-   - Blocked by missing GTA root. Same scan found no `ScriptHookVDotNet.asi` or installed `ScriptHookVDotNet3.dll` outside the NuGet compile cache.
+4. `[x]` Verify/create `scripts/` folder.
+   - Created/verified `C:\Program Files\Epic Games\GTAVEnhanced\scripts`.
 
-5. `[x]` Create C# project: net48 class library referencing `ScriptHookVDotNet3.dll`.
-   - Added `src/mod/GtaCopilot.Mod.csproj`.
-   - Uses old-style MSBuild project because this machine has VS/MSBuild but no .NET SDK.
-   - Targets .NET Framework 4.8 and x64.
-   - Restores `ScriptHookVDotNet3` 3.6.0 from NuGet and directly references its `lib/net48/ScriptHookVDotNet3.dll`.
-   - Restores `Microsoft.NETFramework.ReferenceAssemblies.net48` 1.0.3 because the local net48 targeting pack is missing.
+5. `[x]` Build and copy DLL to GTA V `scripts/` folder.
+   - Build command used full VS path because `MSBuild.exe` is not on PATH in this shell:
+     - `'/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe' src/mod/GtaCopilot.Mod.csproj -restore -p:Configuration=Release -v:minimal`
+   - Build succeeded:
+     - `GtaCopilot.Mod -> C:\Users\beshr\Downloads\gta-copilot\src\mod\bin\Release\GtaCopilot.Mod.dll`
+   - Verified output:
+     - `src/mod/bin/Release/GtaCopilot.Mod.dll`: 4,608 bytes.
+     - PE32+ x86-64 Mono/.NET assembly.
+   - Copied to:
+     - `C:\Program Files\Epic Games\GTAVEnhanced\scripts\GtaCopilot.Mod.dll`
+   - Verified copied DLL is present, 4,608 bytes.
 
-6. `[x]` Write `HelloCopilot.cs`.
-   - Added `src/mod/HelloCopilot.cs`.
-   - `HelloCopilot : GTA.Script` subscribes to `Tick` and draws `Game.Player.Character.Health` every tick with `GTA.UI.TextElement`.
-   - No background work, socket callbacks, timers, tasks, async continuations, file I/O, or native reads outside the SHVDN tick path.
+6. `[x]` Disable BattlEye for modded single-player launch.
+   - Created `C:\Program Files\Epic Games\GTAVEnhanced\commandline.txt` with:
+     - `-nobattleye`
+   - Verified file exists and contains `-nobattleye`.
 
-7. `[ ]` Build and copy DLL to GTA V `scripts/` folder.
-   - Build portion succeeded:
-     - Command: `MSBuild.exe src/mod/GtaCopilot.Mod.csproj -restore -p:Configuration=Release -v:minimal`
-     - Output: `src/mod/bin/Release/GtaCopilot.Mod.dll`
-     - Observed size: 4,608 bytes
-   - Copy portion is blocked because no GTA V root / `scripts/` folder was found.
-   - Left the checkbox unchecked because the item requires both build and copy.
+7. `[ ]` In-game Phase 0 verification.
+   - Not yet verified in-game from Hermes.
+   - Beshr should launch GTA V Enhanced single-player and confirm `Health: <number>` draws at the top-left and updates live.
+   - Do NOT start Phase 1 until Beshr confirms the health number updates live in-game.
 
 ## Files touched
-- `PROJECT_STATE.md` — checklist checkbox updates only.
+- `.gitignore` — restored existing ignore rules and added local cache ignores for `.downloads/` and `.hermes/`; `GAME_PATH.txt`, `bin/`, and `obj/` remain ignored.
+- `GAME_PATH.txt` — ignored local file containing the discovered GTA V Enhanced root.
 - `HANDOFF.md` — overwritten with this report.
-- `src/mod/GtaCopilot.Mod.csproj` — new net48 SHVDN3 class library project.
-- `src/mod/HelloCopilot.cs` — new Phase 0 proof-of-life script.
+- Game root `C:\Program Files\Epic Games\GTAVEnhanced\`:
+  - Installed `ScriptHookVDotNet.asi`, `ScriptHookVDotNet.ini`, `ScriptHookVDotNet2.dll`, `ScriptHookVDotNet3.dll`, `MinHook.x64.dll`.
+  - Created/verified `scripts/`.
+  - Copied `scripts\GtaCopilot.Mod.dll`.
+  - Created `commandline.txt` with `-nobattleye`.
 
-## Blockers / questions for Claude Code
-- GTA V install path was not discoverable from this environment. Beshr may need to install GTA V or provide the actual root path before Hermes can verify clean launch, SHV/SHVDN placement, create/verify `scripts/`, or copy the DLL.
-- Is using NuGet `ScriptHookVDotNet3` 3.6.0 as the compile reference acceptable for Phase 0 until the manually installed GTA-root `ScriptHookVDotNet3.dll` exists?
-- Should the project eventually switch from the NuGet-cache `HintPath` to a reviewer-approved local GTA/SHVDN reference path once Beshr installs SHVDN3?
-- This machine lacks the .NET SDK and the net48 targeting pack. The project compensates with old-style MSBuild plus `Microsoft.NETFramework.ReferenceAssemblies.net48`; please review whether that should stay or whether Beshr should install the developer pack instead.
+## Notes / pitfalls
+- The first Python install attempt used an MSYS path (`/c/...`) inside Windows Python, which resolved incorrectly as `\c\...`. Re-ran successfully with native Windows path `C:\Program Files\Epic Games\GTAVEnhanced`.
+- `MSBuild.exe` is available at `C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe`, but not on PATH in this Git Bash shell.
+- SHVDNE README requires `MinHook.x64.dll` and `ScriptHookVDotNet.ini` in addition to the `.asi`/`ScriptHookVDotNet3.dll`; installed the complete root runtime set from the release zip.
+- `.downloads/ScriptHookV_3788.0_1013.34.zip` remains ignored/local.
 
 ## Reviewer focus
-- Confirm the old-style `.csproj` + NuGet direct `HintPath` is acceptable for this repo.
-- Confirm `HelloCopilot` is minimal enough for Phase 0 and respects the main-script-thread native rule.
-- Confirm whether the `x64` platform target is the preferred default for SHVDN3/GTA V.
+- Confirm installing the complete SHVDNE root runtime set (`ScriptHookVDotNet*.*` + `MinHook.x64.dll`) is acceptable versus only `.asi` + `ScriptHookVDotNet3.dll`.
+- Confirm `.gitignore` addition for `.downloads/` and `.hermes/` is acceptable.
+- Await Beshr's in-game Phase 0 confirmation before any Phase 1 work.
