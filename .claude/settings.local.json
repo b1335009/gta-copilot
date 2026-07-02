@@ -6,7 +6,12 @@
       "WebFetch(domain:www.nexusmods.com)",
       "WebFetch(domain:www.gta5-mods.com)",
       "WebFetch(domain:player2.game)",
-      "Bash(curl -s \"https://api.github.com/search/repositories?q=living+world+ai+gta&per_page=20\")"
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=living+world+ai+gta&per_page=20\")",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=LivingWorld+gta+in:name,description&per_page=20\")",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=player2+gta&per_page=30\")",
+      "WebFetch(domain:gta5mod.net)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }
