@@ -1,3 +1,5 @@
+# machine-specific
+GAME_PATH.txt
 # builds
 bin/
 obj/
