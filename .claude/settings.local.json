@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(git init 2>&1)",
+      "WebSearch",
+      "WebFetch(domain:www.nexusmods.com)",
+      "WebFetch(domain:www.gta5-mods.com)",
+      "WebFetch(domain:player2.game)",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=living+world+ai+gta&per_page=20\")"
+    ]
+  }
+}

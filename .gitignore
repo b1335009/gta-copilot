@@ -1,0 +1,18 @@
+# builds
+bin/
+obj/
+*.dll
+!lib/*.dll
+# python
+__pycache__/
+*.pyc
+.venv/
+# models (too big for git)
+models/
+*.gguf
+*.onnx
+# logs
+*.log
+# OS
+Thumbs.db
+.DS_Store
