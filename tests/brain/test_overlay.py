@@ -86,8 +86,10 @@ class FakeSpeaker:
         self.spoken = []
         self._lock = threading.Lock()
 
-    def speak(self, text):
+    def speak(self, text, *, on_audio_ready=None):
         from src.brain.voice.speaker import SpeechResult
+        if on_audio_ready is not None:
+            on_audio_ready(1.0)
         with self._lock:
             self.spoken.append(text)
         return SpeechResult(text=text, tts_ms=1.0, play_ms=1.0)

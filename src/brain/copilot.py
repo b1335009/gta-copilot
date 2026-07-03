@@ -37,7 +37,13 @@ from typing import Any, Optional
 
 import numpy as np
 
-from .actions import ActionClient, confirmation_phrase, failure_phrase, match_intent
+from .actions import (
+    ActionClient,
+    confirmation_phrase,
+    failure_phrase,
+    make_talking_request,
+    match_intent,
+)
 from .overlay import LineTag, OverlayMessage, OverlayWindow
 from .state_listener import (
     HOST,
@@ -88,9 +94,11 @@ class SpeechQueue:
     drains the queue and calls ``speaker.speak()`` sequentially.
     """
 
-    def __init__(self, speaker: Speaker, *, overlay_queue: Optional[queue.Queue] = None):
+    def __init__(self, speaker: Speaker, *, overlay_queue: Optional[queue.Queue] = None,
+                 on_audio_ready=None):
         self._speaker = speaker
         self._overlay_queue = overlay_queue
+        self._on_audio_ready = on_audio_ready  # (duration_ms) -> None; lip-sync hook
         self._q: queue.Queue[Optional[tuple[str, LineTag]]] = queue.Queue()
         self._thread = threading.Thread(target=self._worker, daemon=True, name="speech-queue")
         self._thread.start()
@@ -109,7 +117,7 @@ class SpeechQueue:
                 break
             text, tag = item
             try:
-                result = self._speaker.speak(text)
+                result = self._speaker.speak(text, on_audio_ready=self._on_audio_ready)
                 print(
                     f"[SPOKEN] ({tag.value}) \"{text}\" "
                     f"(tts={result.tts_ms:.0f}ms play={result.play_ms:.0f}ms)",
@@ -494,22 +502,31 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not args.no_overlay:
         overlay_q = queue.Queue(maxsize=200)
 
+    # Phase 5a: action client (shared between listener + voice loop).
+    # No on_overlay callback — the voice loop pushes its own ACTION lines
+    # (request/ack/nack/timeout); wiring both painted every event twice.
+    action_client = ActionClient(logs_dir=args.logs_dir)
+    print("[INIT] action client ready", flush=True)
+
+    # Milestone 6: lip-sync — every spoken line animates the companion's
+    # mouth for the audio's duration, fire-and-forget, only while he's alive.
+    def _sync_companion_mouth(duration_ms: float) -> None:
+        raw = shared.raw
+        comp = raw.get("companion") if isinstance(raw, dict) else None
+        if comp and not comp.get("dead"):
+            action_client.send_action(make_talking_request(duration_ms), wait=False)
+
     # Speaker + serialized speech queue
     speaker: Optional[Speaker] = None
     speech_q: Optional[SpeechQueue] = None
     if not args.no_voice:
         try:
             speaker = Speaker()
-            speech_q = SpeechQueue(speaker, overlay_queue=overlay_q)
-            print("[INIT] TTS speaker + speech queue ready", flush=True)
+            speech_q = SpeechQueue(speaker, overlay_queue=overlay_q,
+                                   on_audio_ready=_sync_companion_mouth)
+            print("[INIT] TTS speaker + speech queue ready (companion lip-sync on)", flush=True)
         except Exception as exc:
             print(f"[INIT] WARNING: TTS init failed ({exc}), spoken output disabled", flush=True)
-
-    # Phase 5a: action client (shared between listener + voice loop).
-    # No on_overlay callback — the voice loop pushes its own ACTION lines
-    # (request/ack/nack/timeout); wiring both painted every event twice.
-    action_client = ActionClient(logs_dir=args.logs_dir)
-    print("[INIT] action client ready", flush=True)
 
     # Start listener thread
     if not args.no_listener:

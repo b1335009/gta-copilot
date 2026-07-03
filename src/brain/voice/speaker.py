@@ -126,12 +126,22 @@ class Speaker:
         self._tts = tts_backend or PiperTTSBackend()
         self._playback = playback_backend or SounddevicePlaybackBackend()
 
-    def speak(self, text: str) -> SpeechResult:
-        """Synthesize *text* and play it. Returns timing info."""
+    def speak(self, text: str, *, on_audio_ready: Optional[Any] = None) -> SpeechResult:
+        """Synthesize *text* and play it. Returns timing info.
+
+        ``on_audio_ready(duration_ms)`` fires after synthesis, right before
+        playback — used to sync in-game companion mouth animation to the voice.
+        """
         # Synthesis
         t0 = time.perf_counter()
         audio, sr = self._tts.synthesize(text)
         tts_ms = (time.perf_counter() - t0) * 1000.0
+
+        if on_audio_ready is not None and sr > 0:
+            try:
+                on_audio_ready(len(audio) / sr * 1000.0)
+            except Exception:
+                pass  # expression sync must never block or kill speech
 
         # Playback
         t1 = time.perf_counter()

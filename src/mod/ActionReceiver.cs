@@ -29,13 +29,18 @@ namespace GtaCopilot.Mod
             public readonly string action;
             public readonly float paramX;
             public readonly float paramY;
+            public readonly string paramName;      // companion_gesture: gesture id
+            public readonly float paramDurationMs; // companion_talking: talk duration
 
-            public ActionRequest(int id, string action, float paramX, float paramY)
+            public ActionRequest(int id, string action, float paramX, float paramY,
+                                 string paramName, float paramDurationMs)
             {
                 this.id = id;
                 this.action = action;
                 this.paramX = paramX;
                 this.paramY = paramY;
+                this.paramName = paramName;
+                this.paramDurationMs = paramDurationMs;
             }
         }
 
@@ -46,7 +51,9 @@ namespace GtaCopilot.Mod
             "spawn_companion",
             "heal_player",
             "companion_stay",
-            "companion_follow"
+            "companion_follow",
+            "companion_gesture",
+            "companion_talking"
         };
 
         private const int MaxQueuedActions = 16;
@@ -109,7 +116,30 @@ namespace GtaCopilot.Mod
                 return true;
             }
 
-            var request = new ActionRequest(id, actionName, x, y);
+            // Expression params (both optional in the parse; validated per action)
+            string gestureName = ExtractParamString(rawLine, "name");
+            string durationStr = ExtractParamNumeric(rawLine, "duration_ms");
+            float durationMs = 0f;
+            if (durationStr != null)
+            {
+                float.TryParse(durationStr, NumberStyles.Float, CultureInfo.InvariantCulture, out durationMs);
+            }
+
+            if (string.Equals(actionName, "companion_gesture", StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrEmpty(gestureName))
+            {
+                refuseAck = BuildAck(id, false, "companion_gesture requires params.name");
+                return true;
+            }
+
+            if (string.Equals(actionName, "companion_talking", StringComparison.OrdinalIgnoreCase) &&
+                durationMs <= 0f)
+            {
+                refuseAck = BuildAck(id, false, "companion_talking requires params.duration_ms > 0");
+                return true;
+            }
+
+            var request = new ActionRequest(id, actionName, x, y, gestureName, durationMs);
 
             lock (queueLock)
             {
@@ -238,6 +268,22 @@ namespace GtaCopilot.Mod
 
             hasParams = gotX && gotY;
             return true;
+        }
+
+        /// <summary>Extract a string param from the params section, e.g. params.name.</summary>
+        private static string ExtractParamString(string json, string key)
+        {
+            int paramsIdx = json.IndexOf("\"params\"", StringComparison.Ordinal);
+            if (paramsIdx < 0) return null;
+            return ExtractStringValue(json.Substring(paramsIdx), key);
+        }
+
+        /// <summary>Extract a numeric param (raw text) from the params section, e.g. params.duration_ms.</summary>
+        private static string ExtractParamNumeric(string json, string key)
+        {
+            int paramsIdx = json.IndexOf("\"params\"", StringComparison.Ordinal);
+            if (paramsIdx < 0) return null;
+            return ExtractNumericValue(json.Substring(paramsIdx), key);
         }
 
         /// <summary>Extract a string value for a given key like "type" → finds "type":"value"</summary>

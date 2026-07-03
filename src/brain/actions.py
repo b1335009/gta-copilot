@@ -84,7 +84,15 @@ _PLACE_NAMES_SORTED: list[str] = sorted(GAZETTEER.keys(), key=len, reverse=True)
 # ACTION_WHITELIST.md mirror (Python side)
 # ---------------------------------------------------------------------------
 
-WHITELISTED_ACTIONS: set[str] = {"set_waypoint", "spawn_companion", "heal_player"}
+WHITELISTED_ACTIONS: set[str] = {
+    "set_waypoint",
+    "spawn_companion",
+    "heal_player",
+    "companion_stay",
+    "companion_follow",
+    "companion_gesture",
+    "companion_talking",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +252,26 @@ def match_intent(transcript: str) -> Optional[ActionRequest]:
     return None
 
 
+def make_talking_request(duration_ms: float) -> ActionRequest:
+    """Expression: animate the companion's mouth for the TTS duration."""
+    return ActionRequest(
+        id=_id_gen.next(),
+        action="companion_talking",
+        params={"duration_ms": int(duration_ms)},
+        place_name="talking",
+    )
+
+
+def make_gesture_request(name: str) -> ActionRequest:
+    """Expression: play a fixed gesture (wave, nod) on the companion."""
+    return ActionRequest(
+        id=_id_gen.next(),
+        action="companion_gesture",
+        params={"name": name},
+        place_name=name,
+    )
+
+
 def confirmation_phrase(request: ActionRequest) -> str:
     """Spoken confirmation for a successful (acked) action."""
     if request.action == "set_waypoint":
@@ -371,29 +399,33 @@ class ActionClient:
         )
 
         with self._lock:
-            self._acks[ack.id] = ack
-            event = self._pending.get(ack.id)
-            if event:
-                event.set()
+            # Only retain acks someone is waiting for — unawaited acks
+            # (fire-and-forget expressions) would otherwise accumulate.
+            if ack.id in self._pending:
+                self._acks[ack.id] = ack
+                self._pending[ack.id].set()
 
         return ack
 
-    def send_action(self, request: ActionRequest) -> Optional[ActionAck]:
-        """Send an action request and wait up to timeout_s for the ack.
+    def send_action(self, request: ActionRequest, *, wait: bool = True) -> Optional[ActionAck]:
+        """Send an action request; by default wait up to timeout_s for the ack.
 
-        Returns the ActionAck on success, or None on timeout/disconnect.
-        Logs the request+ack to actions-<date>.jsonl regardless.
+        With ``wait=False`` (fire-and-forget expressions like companion_talking)
+        the request is sent and logged but never blocks the caller.
+        Returns the ActionAck on success, or None on timeout/disconnect/no-wait.
+        Logs the request to actions-<date>.jsonl regardless.
         """
         if not is_action_whitelisted(request.action):
             self._log_refused(request, "action not whitelisted")
             return None
 
-        event = threading.Event()
-        with self._lock:
-            self._pending[request.id] = event
+        if wait:
+            event = threading.Event()
+            with self._lock:
+                self._pending[request.id] = event
 
         # Notify overlay: request sent
-        if self._on_overlay:
+        if wait and self._on_overlay:
             self._on_overlay(f"→ {request.action}({request.place_name})…")
 
         wire = request.to_wire()
@@ -403,6 +435,10 @@ class ActionClient:
             self._log_entry(request, None, "disconnected")
             with self._lock:
                 self._pending.pop(request.id, None)
+            return None
+
+        if not wait:
+            self._log_entry(request, None, "not awaited")
             return None
 
         # Wait for ack

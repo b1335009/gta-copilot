@@ -34,6 +34,7 @@ namespace GtaCopilot.Mod
         private readonly ActionReceiver actionReceiver;
         private readonly StateStreamClient streamClient;
         private Ped companion;
+        private int companionTalkingUntil = -1;
         private readonly string stateFilePath;
         private GameState currentState;
         private GameState lastEmittedState;
@@ -76,6 +77,9 @@ namespace GtaCopilot.Mod
 
                 // Phase 5a: drain ≤1 action per tick from the inbound queue
                 DrainOneAction();
+
+                // Milestone 6: reset the talking face when the TTS window ends
+                StopCompanionTalkingIfDue(gameTime);
             }
             catch (Exception ex)
             {
@@ -127,6 +131,16 @@ namespace GtaCopilot.Mod
 
                     case "companion_follow":
                         err = ExecuteCompanionFollow();
+                        ok = err == null;
+                        break;
+
+                    case "companion_gesture":
+                        err = ExecuteCompanionGesture(action.paramName);
+                        ok = err == null;
+                        break;
+
+                    case "companion_talking":
+                        err = ExecuteCompanionTalking(action.paramDurationMs);
                         ok = err == null;
                         break;
 
@@ -203,6 +217,10 @@ namespace GtaCopilot.Mod
                 blip.Color = BlipColor.Blue;
             }
 
+            // Preload gesture anim dicts so companion_gesture is instant later
+            Function.Call(Hash.REQUEST_ANIM_DICT, "mp_player_int_upperwave");
+            Function.Call(Hash.REQUEST_ANIM_DICT, "gestures@m@standing@casual");
+
             companion = ped;
             Console.WriteLine("GtaCopilot: companion spawned (handle " +
                 ped.Handle.ToString(CultureInfo.InvariantCulture) + ")");
@@ -259,6 +277,93 @@ namespace GtaCopilot.Mod
                 return "companion is dead";
             }
             return null;
+        }
+
+        /// <summary>
+        /// Play a short expressive animation. Fixed gesture set only — unknown
+        /// names are nacked. Anim dicts are requested at spawn so they are
+        /// normally resident by the time a gesture arrives. Script thread only.
+        /// </summary>
+        private string ExecuteCompanionGesture(string gestureName)
+        {
+            string err = RequireLivingCompanion();
+            if (err != null)
+            {
+                return err;
+            }
+
+            string dict, anim;
+            switch ((gestureName ?? string.Empty).ToLowerInvariant())
+            {
+                case "wave":
+                    dict = "mp_player_int_upperwave";
+                    anim = "mp_player_int_wave_01";
+                    break;
+                case "nod":
+                    dict = "gestures@m@standing@casual";
+                    anim = "gesture_nod_yes_hard";
+                    break;
+                default:
+                    return "unknown gesture: " + gestureName;
+            }
+
+            Function.Call(Hash.REQUEST_ANIM_DICT, dict);
+            if (!Function.Call<bool>(Hash.HAS_ANIM_DICT_LOADED, dict))
+            {
+                return "gesture anim not loaded yet; try again";
+            }
+
+            // Face the player, then play as an upper-body secondary task
+            // (flag 48 = upper body + allow movement) so following isn't broken.
+            Ped player = Game.Player.Character;
+            if (player != null && player.Exists())
+            {
+                Function.Call(Hash.TASK_TURN_PED_TO_FACE_ENTITY, companion.Handle, player.Handle, 1000);
+            }
+            Function.Call(Hash.TASK_PLAY_ANIM, companion.Handle, dict, anim,
+                8.0f, -8.0f, 2500, 48, 0.0f, false, false, false);
+            Console.WriteLine("GtaCopilot: companion gesture " + gestureName);
+            return null;
+        }
+
+        /// <summary>
+        /// Animate the companion's face/mouth as if speaking, for the duration
+        /// of the brain's TTS playback (capped). The facial anim is reset from
+        /// OnTick when the window expires. Script thread only.
+        /// </summary>
+        private string ExecuteCompanionTalking(float durationMs)
+        {
+            string err = RequireLivingCompanion();
+            if (err != null)
+            {
+                return err;
+            }
+
+            int duration = (int)Math.Min(Math.Max(durationMs, 300f), 15000f);
+            Function.Call(Hash.PLAY_FACIAL_ANIM, companion.Handle, "mic_chatter", "mp_facial");
+
+            Ped player = Game.Player.Character;
+            if (player != null && player.Exists())
+            {
+                Function.Call(Hash.TASK_LOOK_AT_ENTITY, companion.Handle, player.Handle, duration, 2048, 3);
+            }
+
+            companionTalkingUntil = Game.GameTime + duration;
+            return null;
+        }
+
+        private void StopCompanionTalkingIfDue(int gameTime)
+        {
+            if (companionTalkingUntil < 0 || gameTime < companionTalkingUntil)
+            {
+                return;
+            }
+
+            companionTalkingUntil = -1;
+            if (companion != null && companion.Exists() && !companion.IsDead)
+            {
+                Function.Call(Hash.PLAY_FACIAL_ANIM, companion.Handle, "mood_normal_1", "facials@gen_male@base");
+            }
         }
 
         /// <summary>

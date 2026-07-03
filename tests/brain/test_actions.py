@@ -449,6 +449,79 @@ class CompanionIntentTests(unittest.TestCase):
         self.assertEqual(wire["type"], "action")
 
 
+class ExpressionActionTests(unittest.TestCase):
+    def test_make_talking_request_wire(self):
+        from src.brain.actions import make_talking_request
+
+        wire = json.loads(make_talking_request(4217.9).to_wire())
+        self.assertEqual(wire["action"], "companion_talking")
+        self.assertEqual(wire["params"], {"duration_ms": 4217})
+
+    def test_make_gesture_request_wire(self):
+        from src.brain.actions import make_gesture_request
+
+        wire = json.loads(make_gesture_request("wave").to_wire())
+        self.assertEqual(wire["action"], "companion_gesture")
+        self.assertEqual(wire["params"], {"name": "wave"})
+
+    def test_expression_actions_whitelisted(self):
+        self.assertTrue(is_action_whitelisted("companion_talking"))
+        self.assertTrue(is_action_whitelisted("companion_gesture"))
+        self.assertTrue(is_action_whitelisted("companion_stay"))
+        self.assertTrue(is_action_whitelisted("companion_follow"))
+
+    def test_send_action_no_wait_logs_and_returns_immediately(self):
+        import tempfile
+        from src.brain.actions import make_talking_request
+
+        with tempfile.TemporaryDirectory() as tmp:
+            logs_dir = Path(tmp)
+            client = ActionClient(timeout_s=5.0, logs_dir=logs_dir)
+
+            class FakeConn:
+                def __init__(self):
+                    self.lines = []
+                def write(self, s):
+                    self.lines.append(s)
+                def flush(self):
+                    pass
+
+            conn = FakeConn()
+            client.set_connection(conn)
+
+            start = time.monotonic()
+            result = client.send_action(make_talking_request(1500), wait=False)
+            elapsed = time.monotonic() - start
+
+            self.assertIsNone(result)
+            self.assertLess(elapsed, 1.0)  # must not block for the 5s timeout
+            self.assertEqual(len(conn.lines), 1)
+            log_files = list(logs_dir.glob("actions-*.jsonl"))
+            self.assertEqual(len(log_files), 1)
+            entry = json.loads(log_files[0].read_text(encoding="utf-8").strip())
+            self.assertEqual(entry["action"], "companion_talking")
+            self.assertEqual(entry["ack_err"], "not awaited")
+
+    def test_speaker_on_audio_ready_reports_duration(self):
+        import numpy as np
+        from src.brain.voice.speaker import Speaker
+
+        class FakeTTS:
+            def synthesize(self, text):
+                return np.zeros(11025, dtype=np.int16), 22050  # 500 ms
+
+        class FakePlayback:
+            def play(self, audio_int16, *, samplerate):
+                pass
+
+        durations = []
+        spk = Speaker(tts_backend=FakeTTS(), playback_backend=FakePlayback())
+        spk.speak("hello there", on_audio_ready=durations.append)
+
+        self.assertEqual(len(durations), 1)
+        self.assertAlmostEqual(durations[0], 500.0, delta=1.0)
+
+
 class ActionPhraseTests(unittest.TestCase):
     def test_confirmation_per_action(self):
         from src.brain.actions import ActionRequest, confirmation_phrase
