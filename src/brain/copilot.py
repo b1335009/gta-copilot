@@ -3,13 +3,17 @@
 Runs the state-listener thread (TCP from the mod) and the PTT voice loop
 in one process. Wanted-level reactions are also spoken through TTS.
 
-Phase 4 changes:
+Phase 5a additions:
+- Deterministic action system: intent matcher + gazetteer → set_waypoint.
+- ActionClient sends requests over the same TCP socket, waits for ack.
+- Overlay ACTION lines (orange) for request + ack/nack.
+- Voice loop intercepts action intents before LLM chat.
+
+Phase 4:
 - Tk mainloop owns the main thread; voice loop + listener are workers.
 - ``--no-overlay`` preserves console-only behaviour.
 - PTT default changed to ``right ctrl`` (F8 collided in-game).
-- All events (transcripts, replies, reactions, status) feed the overlay queue.
 - Serialized SpeechQueue prevents concurrent-speak clipping.
-- time_to_audio_ms logged per voice exchange.
 - Fallback text is never spoken aloud.
 
 Usage::
@@ -33,6 +37,7 @@ from typing import Any, Optional
 
 import numpy as np
 
+from .actions import ActionClient, match_intent
 from .overlay import LineTag, OverlayMessage, OverlayWindow
 from .state_listener import (
     HOST,
@@ -169,6 +174,7 @@ def state_listener_thread(
     logs_dir: Path = DEFAULT_LOGS_DIR,
     stop_event: Optional[threading.Event] = None,
     overlay_queue: Optional[queue.Queue] = None,
+    action_client: Optional[ActionClient] = None,
 ) -> None:
     """Run the TCP state listener in a thread. Updates SharedGameState and
     triggers spoken wanted-level reactions."""
@@ -216,6 +222,12 @@ def state_listener_thread(
 
                     _push_overlay(overlay_queue, LineTag.STATUS, f"Mod connected from {addr[0]}")
                     print(f"[LISTENER] connected from {addr[0]}:{addr[1]}", flush=True)
+
+                    # Phase 5a: register connection for action send_line()
+                    write_file = conn.makefile("w", encoding="utf-8", newline="\n")
+                    if action_client:
+                        action_client.set_connection(write_file)
+
                     with conn, conn.makefile("r", encoding="utf-8", newline="\n") as stream:
                         for line in stream:
                             if stop_event and stop_event.is_set():
@@ -223,6 +235,18 @@ def state_listener_thread(
                             raw = line.rstrip("\r\n")
                             if not raw:
                                 continue
+
+                            # Phase 5a: check for ack lines from the mod
+                            if action_client:
+                                ack = action_client.feed_ack(raw)
+                                if ack is not None:
+                                    print(
+                                        f"[ACK] id={ack.id} ok={ack.ok}"
+                                        + (f" err={ack.err}" if ack.err else ""),
+                                        flush=True,
+                                    )
+                                    continue  # ack lines are not state lines
+
                             append_raw_line(raw, logs_dir=logs_dir)
                             try:
                                 state = parse_state_line(raw)
@@ -241,6 +265,14 @@ def state_listener_thread(
                                     f"{reaction.text}",
                                     flush=True,
                                 )
+
+                    # Phase 5a: clear connection on disconnect
+                    if action_client:
+                        action_client.clear_connection()
+                    try:
+                        write_file.close()
+                    except Exception:
+                        pass
 
                     _push_overlay(overlay_queue, LineTag.STATUS, "Mod disconnected; waiting…")
                     print("[LISTENER] disconnected; waiting for reconnect", flush=True)
@@ -310,6 +342,7 @@ def voice_loop(
     logs_dir: Path = DEFAULT_LOGS_DIR,
     stop_event: Optional[threading.Event] = None,
     overlay_queue: Optional[queue.Queue] = None,
+    action_client: Optional[ActionClient] = None,
 ) -> None:
     """Main voice loop: PTT → STT → LLM → TTS, with per-stage timing."""
     print(f"[VOICE] ready — hold {recorder.ptt_key.upper()} to talk", flush=True)
@@ -341,6 +374,35 @@ def voice_loop(
 
             # Push player transcript to overlay
             _push_overlay(overlay_queue, LineTag.PLAYER, tx_result.text)
+
+            # Phase 5a: check for action intent BEFORE LLM chat
+            intent = match_intent(tx_result.text)
+            if intent is not None and action_client is not None:
+                print(f"[ACTION] matched intent: {intent.action}({intent.place_name})", flush=True)
+                _push_overlay(overlay_queue, LineTag.ACTION,
+                              f"{intent.action}({intent.place_name})…")
+                ack = action_client.send_action(intent)
+                if ack and ack.ok:
+                    confirm = f"Waypoint set — {intent.place_name}."
+                    speech_queue.enqueue(confirm, LineTag.ACTION)
+                    _push_overlay(overlay_queue, LineTag.ACTION,
+                                  f"{intent.action}({intent.place_name}) ✓ack")
+                    print(f"[ACTION] ack OK — spoken confirmation", flush=True)
+                elif ack and not ack.ok:
+                    fail_msg = f"Couldn't set the waypoint — {ack.err or 'mod refused'}."
+                    speech_queue.enqueue(fail_msg, LineTag.ACTION)
+                    _push_overlay(overlay_queue, LineTag.ACTION,
+                                  f"{intent.action}({intent.place_name}) ✗nack: {ack.err}")
+                    print(f"[ACTION] ack FAIL: {ack.err}", flush=True)
+                else:
+                    timeout_msg = "No response from the mod — waypoint might not have landed."
+                    speech_queue.enqueue(timeout_msg, LineTag.ACTION)
+                    _push_overlay(overlay_queue, LineTag.ACTION,
+                                  f"{intent.action}({intent.place_name}) timeout")
+                    print("[ACTION] timeout waiting for ack", flush=True)
+                # Skip LLM for action intents — the confirmation is enough
+                print("=" * 72, flush=True)
+                continue
 
             # LLM
             game_context = shared.summary
@@ -411,7 +473,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     print("=" * 72, flush=True)
-    print("  GTA COPILOT — Phase 4 Overlay + Voice", flush=True)
+    print("  GTA COPILOT — Phase 5a Actions + Voice", flush=True)
     print("=" * 72, flush=True)
 
     # Build components
@@ -444,13 +506,24 @@ def main(argv: Optional[list[str]] = None) -> int:
         except Exception as exc:
             print(f"[INIT] WARNING: TTS init failed ({exc}), spoken output disabled", flush=True)
 
+    # Phase 5a: action client (shared between listener + voice loop)
+    action_client = ActionClient(
+        logs_dir=args.logs_dir,
+        on_overlay=(
+            (lambda text: _push_overlay(overlay_q, LineTag.ACTION, text))
+            if overlay_q else None
+        ),
+    )
+    print("[INIT] action client ready", flush=True)
+
     # Start listener thread
     if not args.no_listener:
         listener = threading.Thread(
             target=state_listener_thread,
             args=(shared, chat, speech_q),
             kwargs=dict(host=args.host, port=args.port, logs_dir=args.logs_dir,
-                        stop_event=stop, overlay_queue=overlay_q),
+                        stop_event=stop, overlay_queue=overlay_q,
+                        action_client=action_client),
             daemon=True,
             name="state-listener",
         )
@@ -475,7 +548,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         voice_thread = threading.Thread(
             target=voice_loop,
             args=(recorder, transcriber, chat, speech_q, shared),
-            kwargs=dict(logs_dir=args.logs_dir, stop_event=stop, overlay_queue=overlay_q),
+            kwargs=dict(logs_dir=args.logs_dir, stop_event=stop,
+                        overlay_queue=overlay_q, action_client=action_client),
             daemon=True,
             name="voice-loop",
         )

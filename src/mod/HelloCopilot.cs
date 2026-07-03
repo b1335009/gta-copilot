@@ -5,15 +5,21 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using GTA;
+using GTA.Math;
+using GTA.Native;
 using GTA.UI;
 
 namespace GtaCopilot.Mod
 {
     /// <summary>
-    /// Script entrypoint. All GTA/SHVDN state reads stay inside OnTick,
-    /// throttled by Game.GameTime. The only concurrency in the mod lives in
-    /// StateStreamClient (Claude Code owned); OnTick hands it pre-serialized
-    /// strings and never blocks on the network.
+    /// Script entrypoint. All GTA/SHVDN state reads AND action execution
+    /// stay inside OnTick, throttled by Game.GameTime. The only concurrency
+    /// in the mod lives in StateStreamClient (Claude Code owned); OnTick
+    /// hands it pre-serialized strings and never blocks on the network.
+    ///
+    /// Phase 5a: OnTick drains ≤1 action per tick from ActionReceiver,
+    /// validates it against the compiled-in whitelist, executes the native
+    /// on the script thread, and emits an ack line back through the stream.
     /// </summary>
     public sealed class HelloCopilot : Script
     {
@@ -25,6 +31,7 @@ namespace GtaCopilot.Mod
         private const string StateFileName = "GtaCopilot.state.jsonl";
 
         private readonly GameStateReader stateReader;
+        private readonly ActionReceiver actionReceiver;
         private readonly StateStreamClient streamClient;
         private readonly string stateFilePath;
         private GameState currentState;
@@ -38,11 +45,12 @@ namespace GtaCopilot.Mod
         {
             Interval = 0;
             stateReader = new GameStateReader();
-            streamClient = new StateStreamClient();
+            actionReceiver = new ActionReceiver();
+            streamClient = new StateStreamClient(actionReceiver);
             stateFilePath = ResolveStateFilePath();
             Tick += OnTick;
             Aborted += OnAborted;
-            Console.WriteLine("GtaCopilot: state reader initialized; writing " + stateFilePath);
+            Console.WriteLine("GtaCopilot: state reader initialized (Phase 5a); writing " + stateFilePath);
         }
 
         private void OnTick(object sender, EventArgs e)
@@ -64,12 +72,87 @@ namespace GtaCopilot.Mod
                 {
                     DrawHealth(currentState.health);
                 }
+
+                // Phase 5a: drain ≤1 action per tick from the inbound queue
+                DrainOneAction();
             }
             catch (Exception ex)
             {
                 LogTickException(ex, gameTime);
             }
         }
+
+        // ------------------------------------------------------------------
+        // Phase 5a: action execution on the script thread
+        // ------------------------------------------------------------------
+
+        private void DrainOneAction()
+        {
+            ActionReceiver.ActionRequest action = actionReceiver.TryDequeue();
+            if (action == null)
+            {
+                return;
+            }
+
+            Console.WriteLine("GtaCopilot: executing action id=" +
+                action.id.ToString(CultureInfo.InvariantCulture) + " " + action.action);
+
+            string err = null;
+            bool ok = false;
+
+            try
+            {
+                switch (action.action)
+                {
+                    case "set_waypoint":
+                        ExecuteSetWaypoint(action.paramX, action.paramY);
+                        ok = true;
+                        break;
+
+                    case "heal_player":
+                        // Whitelisted, but execution is gated to Phase 5c —
+                        // one action per phase, tested individually.
+                        err = "heal_player not enabled until Phase 5c";
+                        break;
+
+                    case "spawn_companion":
+                        // Placeholder — full implementation is Phase 5b
+                        err = "spawn_companion not yet implemented";
+                        break;
+
+                    default:
+                        err = "unknown action: " + action.action;
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                err = "execution error: " + ex.Message;
+                Console.WriteLine("GtaCopilot: action execution error: " + ex);
+            }
+
+            // Emit ack back to the brain
+            string ackLine = ActionReceiver.BuildAck(action.id, ok, err);
+            Console.WriteLine("GtaCopilot: ack -> " + ackLine);
+            streamClient.EnqueueAck(ackLine);
+        }
+
+        /// <summary>
+        /// Set a waypoint on the player's map at the given world coordinates.
+        /// Uses the native SET_NEW_WAYPOINT which naturally takes 2D map coords.
+        /// Must be called on the script thread.
+        /// </summary>
+        private static void ExecuteSetWaypoint(float x, float y)
+        {
+            Function.Call(Hash.SET_NEW_WAYPOINT, x, y);
+            Console.WriteLine("GtaCopilot: waypoint set at x=" +
+                x.ToString("F1", CultureInfo.InvariantCulture) + " y=" +
+                y.ToString("F1", CultureInfo.InvariantCulture));
+        }
+
+        // ------------------------------------------------------------------
+        // Existing Phase 1–2 methods (unchanged)
+        // ------------------------------------------------------------------
 
         private void EmitIfNeeded(GameState state, int gameTime)
         {

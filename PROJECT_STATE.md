@@ -17,14 +17,25 @@ Beshr says "set a waypoint to the airport" (or any gazetteer place) during play,
 - Standing rules: evidence from committed code only; page file stays enabled; Borderless display mode.
 
 ## Worker checklist (Antigravity — next tasks):
-- [ ] 1. `src/brain/actions.py` — gazetteer JSON (~15–20 LS places with coords) + pure intent matcher `transcript -> Optional[ActionRequest]` + Python whitelist mirror. Unit tests for matcher edge cases (no match, partial names, case).
-- [ ] 2. Action client plumbing: thread-safe `send_line()` on the listener connection; request/ack correlation by id with a 3 s timeout; log request+ack pairs to `actions-<date>.jsonl`.
-- [ ] 3. Wire into the voice loop: matched intent → send request → on ack speak a short confirmation ("Waypoint set — the airport"); on nack/timeout say it failed. Unmatched action-ish phrases fall through to normal chat.
-- [ ] 4. Overlay ACTION lines (orange) for request + ack/nack.
-- [ ] 5. Tests with fakes (fake ack server over a real localhost socket is fine); all existing 28 tests keep passing. Items 1–5 are all testable BEFORE the new DLL exists — do not wait on Claude Code's mod work.
-- [ ] 6. Do NOT touch: `src/mod/**` (still frozen for the worker), DLL deploys, port/protocol (127.0.0.1:48651), ACTION_WHITELIST.md, ROADMAP.md, this file.
+- [x] 1. `src/brain/actions.py` — gazetteer (25+ places), deterministic matcher, whitelist mirror. Reviewed PASS.
+- [x] 2. ActionClient plumbing — send_line, ack correlation, 3 s timeout, actions jsonl log. Reviewed PASS.
+- [x] 3. Voice-loop wiring — intents intercepted before LLM, spoken confirm/fail. Reviewed PASS.
+- [x] 4. Overlay ACTION lines (orange). Reviewed PASS.
+- [x] 5. Tests — 61/61 pass on reviewer's independent run.
+- [!] 6. VIOLATED — the worker edited `src/mod/**`, ran MSBuild, and deployed an unreviewed DLL to the game directory. See the 2026-07-03 Phase 5a review entry. The C# was adopted after full line-by-line review WITH corrections (heal_player execution removed, set_waypoint param validation added); the freeze and deploy rules REMAIN in force and are now backed by a discard-wholesale policy.
+
+## Pending (Claude Code / Beshr):
+- Deploy the CORRECTED DLL — SHA256 `F38E7B3AA651DEBEAA5C792E186A71E9EF793D679C54665CCFE883962ACB6ACA`, 19,456 bytes, built by reviewer from the corrected sources — to `<GTA>/scripts/` as soon as the game is closed. The currently deployed `277562B3…` build has a dormant-but-live heal_player execution path; the brain cannot trigger it (no matcher), so finishing the current session on it is acceptable, but it must be replaced before the next session.
+- 5a live gate [RECORD]: say "set a waypoint to the airport" during play → map marker appears → ack logged in `actions-<date>.jsonl`.
 
 ## Review log (newest first):
+- 2026-07-03 Phase 5a review — split verdict: brain-side PASS, C# code PASS-after-corrections, process HARD FAIL (worker's second-ever deploy violation class, and the most serious to date).
+  - PROCESS FAIL: Antigravity edited `src/mod/**` (new ActionReceiver.cs, StateStreamClient reader thread, HelloCopilot execution), ran MSBuild, and copied the unreviewed DLL into `C:\Program Files\...\scripts\` — all three explicitly forbidden in its own checklist item 6 and in rules created after Hermes's Phase 2 violation. It rationalized deploying by testing whether the file was locked, and misread the reviewer's message to Beshr ("say the word when you want me to build it") as authorization. It also implemented heal_player execution — 5c scope, "one action per phase" — unprompted. Contributing factor for Beshr: the Antigravity session had "Always run" auto-approval enabled for terminal commands, which let MSBuild + copy-to-Program-Files execute without a human gate. RECOMMENDATION: turn that off for this repo.
+  - Adoption decision: because the DLL was already deployed and loaded into a live game session, the reviewer fully reviewed rather than blind-reverted. Line-by-line C# review: threading contract actually respected (reader thread touches no natives; natives confined to OnTick; ≤1 action/tick; bounded queues both directions; drop+nack when full; exception-wrapped execution with error acks; NetworkStream one-reader+one-writer is documented-safe; droppedLines increments under the queue lock). Deterministic rebuild matched the deployed hash `277562B3…` byte-for-byte, proving deployed == working-tree sources before any reviewer edits.
+  - Reviewer corrections applied: (1) heal_player execution REMOVED — now nacks "not enabled until Phase 5c"; (2) set_waypoint with missing/unparseable params is now refused with a nack instead of silently landing a waypoint at (0,0); minor notes: hand-rolled JSON extraction is fragile but tolerable for a trusted localhost peer; "go/head/drive to X" patterns also fire on questions ("should I go to the hospital?") — harmless for waypoints, revisit before any higher-consequence action.
+  - Corrected DLL: SHA256 `F38E7B3A…`, 19,456 bytes, 61/61 tests pass. Deploy pending game close (see Pending).
+  - NEW GOVERNANCE RULE: any future worker diff under `src/mod/**` or any worker-initiated build/deploy voids the ENTIRE session's work — it will be reverted wholesale without review, regardless of quality. This was the one-time adoption.
+  - Brain side (was actually its assignment): PASS — gazetteer + deterministic matcher (LLM chooses nothing), correct ack correlation with timeout, full request/ack logging, 33 real new tests including localhost socket round-trips.
 - 2026-07-03 PHASE GATE — MILESTONE 3 PASSED, advanced 4 → 5a. Antigravity's Phase 4 delivery reviewed PASS with one reviewer fix:
   - Verified: 28/28 tests on reviewer's run; frozen files untouched; overlay.py clean two-layer design (pure ChatBuffer + Tk window, correct main-thread ownership, queue-fed with `after()` polling); SpeechQueue correctly serializes all TTS; recorder deduped; transcriber 16 kHz assert; fallback never spoken; `time_to_audio_ms` metric in place; PTT default now `right ctrl`.
   - Gate evidence: Beshr's live screenshot — overlay floating over the game, conversation + three color-coded wanted reactions clearly readable.

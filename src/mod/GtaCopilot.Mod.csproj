@@ -45,6 +45,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="ActionReceiver.cs" />
     <Compile Include="GameState.cs" />
     <Compile Include="GameStateReader.cs" />
     <Compile Include="HelloCopilot.cs" />

@@ -30,6 +30,7 @@ class LineTag(str, Enum):
     PLAYER = "player"
     COPILOT = "copilot"
     REACTION = "reaction"
+    ACTION = "action"
     STATUS = "status"
 
 
@@ -38,6 +39,7 @@ TAG_COLOURS: dict[LineTag, str] = {
     LineTag.PLAYER: "#5bc0eb",     # bright cyan — player transcript
     LineTag.COPILOT: "#9eef73",    # green — copilot reply
     LineTag.REACTION: "#fde74c",   # yellow — wanted-level reaction
+    LineTag.ACTION: "#f4845f",     # orange — action request / ack
     LineTag.STATUS: "#888888",     # grey — connect / disconnect / info
 }
 
@@ -249,5 +251,6 @@ def _tag_prefix(tag: LineTag) -> str:
         LineTag.PLAYER: "YOU: ",
         LineTag.COPILOT: "COPILOT: ",
         LineTag.REACTION: "⚠ ",
+        LineTag.ACTION: "→ ",
         LineTag.STATUS: "• ",
     }.get(tag, "")
