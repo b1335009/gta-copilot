@@ -9,15 +9,18 @@ Two parts, one session:
 1. Heal on command: "heal me" / "patch me up" during play → player health restored to max, acked, spoken confirmation.
 2. MILESTONE 4 GATE [RECORD — this is the hook clip]: the full payoff run — a chase or firefight with state awareness, voice chat, and all three actions used live (waypoint, companion, heal).
 
-## Split of work (permanent):
-- C# (Claude Code): re-enable heal_player execution in HelloCopilot (the reviewed implementation pattern from the 5a incident: `player.Character.Health = MaxHealth` on the script thread; currently nacks "not enabled until Phase 5c"). Build, hash, deploy with game closed.
-- Brain-side (worker): deterministic heal intents: "heal me", "patch me up", "fix me up", "I need health". Confirmation ("Patched up — you're good.") and failure phrases. Tests. ALSO fix the 5b matcher gap found live: "give me another companion" / "get me a bodyguard" / "another companion" didn't match, so the duplicate-refusal path never fired — add those patterns so the nack refusal can actually happen (and get spoken).
+## Split of work — 5c EXCEPTION (Beshr's authorization, 2026-07-03):
+Beshr has authorized Antigravity to run the ENTIRE phase, including the mod change and deploy. This is a one-phase, tightly-bounded exception to the src/mod freeze — NOT a repeal. Bounds:
+- The ONLY permitted `src/mod/**` change: in `HelloCopilot.cs`, replace the `heal_player` nack case with real execution (`Game.Player.Character.Health = MaxHealth` guarded by null/Exists checks, on the script thread, ack ok). Nothing else in `src/mod/**` may change — any other C# diff still voids the session.
+- Build with MSBuild, record the DLL SHA256 + byte size in HANDOFF, deploy ONLY after verifying the game process is not running (`tasklist`), and verify source/target hashes match post-copy. Paste all hashes in HANDOFF — the reviewer will verify by deterministic rebuild afterward.
+- Everything is reviewed post-hoc by Claude Code before the Milestone 4 gate counts.
 
 ## Worker checklist (Antigravity — next tasks):
-- [ ] 1. Heal intents in `match_intent` (no params) + confirmation/failure phrases + tests.
-- [ ] 2. Companion matcher gap: add "give/get me a/another companion|bodyguard|buddy" patterns + tests (watch for false positives on ordinary chat).
-- [ ] 3. Full suite green; paste the test count in HANDOFF. "Done" means every checklist item, not most of them (see 5b review — items 2–3 were claimed but not done).
-- [ ] 4. Do NOT touch: `src/mod/**`, builds, deploys, port/protocol, ACTION_WHITELIST.md, ROADMAP.md, this file. A violation voids the session.
+- [ ] 1. Heal intents in `match_intent` (no params): "heal me", "patch me up", "fix me up", "I need health" + confirmation ("Patched up — you're good.") / failure phrases + tests.
+- [ ] 2. Companion matcher gap from 5b live: add "give/get/bring me a/another companion|bodyguard|buddy" patterns + tests (watch false positives on ordinary chat).
+- [ ] 3. The bounded C# change + build + hash + deploy per the exception above. Every hash and the tasklist check pasted in HANDOFF.
+- [ ] 4. Full suite green; paste the exact test count in HANDOFF. "Done" means every checklist item — 5b items 2–3 were claimed but not delivered; that doesn't happen again.
+- [ ] 5. Still frozen even under the exception: port/protocol, ACTION_WHITELIST.md, ROADMAP.md, this file, and all `src/mod/**` outside the single heal case.
 
 ## Standing architecture (carried from earlier phases, still binding):
 - Action wire schema: brain → mod `{"type":"action","id":<int>,"action":"<name>","params":{...}}`; mod → brain ack `{"ack":<id>,"ok":bool,"err":str|null}`. Same socket (127.0.0.1:48651), UTF-8 newline framing. Mod validates against a compiled-in whitelist mirror, executes natives on the script thread only, ≤1 action/tick, bounded queues both directions.
