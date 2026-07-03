@@ -241,6 +241,37 @@ class ChatTests(unittest.TestCase):
         )
         self.assertEqual(_clean_reply("no punctuation here"), "no punctuation here")
 
+class ChatPersonaTests(unittest.TestCase):
+    def test_copilot_persona_default(self):
+        from src.brain.voice.chat import CopilotChat
+        backend = FakeChatBackend("Yes boss")
+        chat = CopilotChat(backend=backend)
+        chat.reply("yo", game_state_summary="wanted=2 hp=180/200")
+        self.assertIn("riding shotgun", backend.last_system)
+
+    def test_companion_persona_with_hp(self):
+        from src.brain.voice.chat import CopilotChat
+        backend = FakeChatBackend("I am hurt")
+        chat = CopilotChat(backend=backend)
+        chat.reply("how are you", game_state_summary="wanted=2 hp=180/200 companion_hp=50")
+        self.assertIn("fighting alongside", backend.last_system)
+
+    def test_companion_persona_when_dead(self):
+        from src.brain.voice.chat import CopilotChat
+        backend = FakeChatBackend("I am dead")
+        chat = CopilotChat(backend=backend)
+        chat.reply("what's up", game_state_summary="wanted=2 hp=180/200 companion=DEAD")
+        self.assertIn("fighting alongside", backend.last_system)
+        
+    def test_react_to_companion_death(self):
+        from src.brain.voice.chat import CopilotChat
+        backend = FakeChatBackend("Tell my wife I love her.")
+        chat = CopilotChat(backend=backend)
+        res = chat.react_to_companion_death(game_state_summary="hp=100 companion=DEAD")
+        self.assertEqual(res.reply, "Tell my wife I love her.")
+        self.assertIn("fighting alongside", backend.last_system)
+        self.assertIn("killed in action", backend.last_prompt)
+
 
 # -----------------------------------------------------------------------
 # Speaker tests

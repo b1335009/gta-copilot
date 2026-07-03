@@ -176,6 +176,30 @@ _HEAL_PATTERNS: list[re.Pattern] = [
 ]
 
 
+# Patterns that trigger stay intent:
+_STAY_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bwait\s+here\b", re.IGNORECASE),
+    re.compile(r"\bstay\s+here\b", re.IGNORECASE),
+    re.compile(r"\bhold\s+position\b", re.IGNORECASE),
+    re.compile(r"\bstay\s+put\b", re.IGNORECASE),
+]
+
+# Patterns that trigger follow intent. NOTE: bare "on me" was removed —
+# "the cops are on me!" is normal panicked speech and must not command anyone.
+_FOLLOW_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bfollow\s+me\b", re.IGNORECASE),
+    re.compile(r"\bstick\s+with\s+me\b", re.IGNORECASE),
+    re.compile(r"\bcome\s+with\s+me\b", re.IGNORECASE),
+    re.compile(r"\bkeep\s+up\b", re.IGNORECASE),
+]
+
+# Patterns that trigger gesture intent:
+_GESTURE_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\b(?:wave(?:\s+at\s+me)?|say\s+hi)\b", re.IGNORECASE),
+    re.compile(r"\bnod\b", re.IGNORECASE),
+]
+
+
 class _IDGenerator:
     """Thread-safe auto-incrementing action ID generator."""
 
@@ -238,7 +262,34 @@ def match_intent(transcript: str) -> Optional[ActionRequest]:
                 place_name="backup",
             )
 
-    # 3. Check for waypoint intent
+    # 3. Check for stay / wait intent
+    for pattern in _STAY_PATTERNS:
+        if pattern.search(transcript):
+            return ActionRequest(
+                id=_id_gen.next(),
+                action="companion_stay",
+                params={},
+                place_name="stay",
+            )
+
+    # 4. Check for follow intent
+    for pattern in _FOLLOW_PATTERNS:
+        if pattern.search(transcript):
+            return ActionRequest(
+                id=_id_gen.next(),
+                action="companion_follow",
+                params={},
+                place_name="follow",
+            )
+
+    # 5. Check for gesture intent
+    for pattern in _GESTURE_PATTERNS:
+        if pattern.search(transcript):
+            m = pattern.search(transcript)
+            name = "nod" if "nod" in m.group(0).lower() else "wave"
+            return make_gesture_request(name)
+
+    # 6. Check for waypoint intent
     place = _extract_place(transcript)
     if place is not None:
         coords = GAZETTEER[place]
@@ -280,6 +331,12 @@ def confirmation_phrase(request: ActionRequest) -> str:
         return "Backup's here — he's got your six."
     if request.action == "heal_player":
         return "Patched up — you're good."
+    if request.action == "companion_stay":
+        return "Holding position."
+    if request.action == "companion_follow":
+        return "Right behind you."
+    if request.action == "companion_gesture":
+        return "Hello there." if request.params.get("name") == "wave" else "Nodding."
     return f"{request.action} done."
 
 
@@ -287,6 +344,11 @@ def failure_phrase(request: ActionRequest, err: Optional[str]) -> str:
     """Spoken message for a nacked or failed action."""
     if request.action == "spawn_companion" and err and "already active" in err:
         return "You've already got your boy with you."
+    if request.action in ("companion_stay", "companion_follow", "companion_gesture"):
+        if err and "no companion" in err.lower():
+            return "I'm not out there yet — call backup first."
+        if err and "dead" in err.lower():
+            return "He didn't make it, boss."
     return f"Couldn't do it — {err or 'mod refused'}."
 
 

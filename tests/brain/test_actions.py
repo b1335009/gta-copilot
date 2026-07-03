@@ -570,5 +570,78 @@ class HealIntentTests(unittest.TestCase):
         self.assertEqual(confirmation_phrase(heal), "Patched up — you're good.")
 
 
+class Phase6IntentTests(unittest.TestCase):
+    def test_stay_intent_match(self):
+        from src.brain.actions import match_intent
+        
+        phrases = ["wait here", "stay here", "hold position", "stay put"]
+        for phrase in phrases:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "companion_stay", phrase)
+
+    def test_follow_intent_match(self):
+        from src.brain.actions import match_intent
+        
+        phrases = ["follow me", "stick with me", "come with me", "keep up"]
+        for phrase in phrases:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "companion_follow", phrase)
+
+    def test_panicked_speech_is_not_a_follow_command(self):
+        from src.brain.actions import match_intent
+
+        # Reviewer fix: bare "on me" was a follow trigger — "the cops are on
+        # me!" must never command the companion.
+        self.assertIsNone(match_intent("the cops are on me!"))
+        self.assertIsNone(match_intent("they're on me, help!"))
+
+    def test_no_bare_lets_go(self):
+        from src.brain.actions import match_intent
+        
+        # We must not match a bare "let's go"
+        intent = match_intent("let's go")
+        self.assertIsNone(intent, "let's go matched something inappropriately")
+        intent2 = match_intent("lets go")
+        self.assertIsNone(intent2, "lets go matched something inappropriately")
+
+    def test_gesture_intent_match(self):
+        from src.brain.actions import match_intent
+        
+        # wave
+        phrases_wave = ["wave", "say hi", "wave at me"]
+        for phrase in phrases_wave:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "companion_gesture", phrase)
+            self.assertEqual(intent.params.get("name"), "wave", phrase)
+
+        # nod
+        intent_nod = match_intent("nod")
+        self.assertIsNotNone(intent_nod)
+        self.assertEqual(intent_nod.action, "companion_gesture")
+        self.assertEqual(intent_nod.params.get("name"), "nod")
+
+    def test_false_positive_waive(self):
+        from src.brain.actions import match_intent
+        intent = match_intent("waive the fee")
+        self.assertIsNone(intent, "matched waive instead of wave")
+
+    def test_phase6_phrases(self):
+        from src.brain.actions import ActionRequest, confirmation_phrase, failure_phrase
+        
+        req_stay = ActionRequest(id=10, action="companion_stay", params={}, place_name="stay")
+        self.assertEqual(confirmation_phrase(req_stay), "Holding position.")
+        self.assertIn("call backup first", failure_phrase(req_stay, "no companion active"))
+        self.assertIn("didn't make it", failure_phrase(req_stay, "companion is dead"))
+        
+        req_follow = ActionRequest(id=11, action="companion_follow", params={}, place_name="follow")
+        self.assertEqual(confirmation_phrase(req_follow), "Right behind you.")
+        
+        req_wave = ActionRequest(id=12, action="companion_gesture", params={"name": "wave"}, place_name="wave")
+        self.assertEqual(confirmation_phrase(req_wave), "Hello there.")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -52,5 +52,14 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - New action types beyond the initial whitelist.
 - Any self-extending agent capability.
 
+## Milestone 8 — Autonomous teammate (long-term vision; owner-authored)
+Beshr's end state: the companion plays alongside you like a second human — mission-aware, conversational, acting on its own initiative. The path there does NOT abandon the whitelist; it grows it:
+- **Parameterized actions, not free-form execution.** "Spawn a T20" becomes `spawn_vehicle` with a model param validated against a fixed catalog — the LLM can *fill parameters*, never *invent actions*. Same pattern for goto/attack/defend targets.
+- **Propose → validate → execute.** For self-directed behavior, the LLM proposes an action from the whitelist; deterministic code validates params, rate-limits, and logs; the mod validates again. Two independent validation layers survive every stage of autonomy.
+- **Initiative comes last and gated.** Self-triggered actions (no voice command) start with an allowlist of trigger conditions (e.g., companion heals player below 20% hp) — each one reviewed and added individually, exactly like actions were.
+- Sequenced after Milestone 5 (nightly-agent review infrastructure), per the out-of-scope rules above — which stand.
+
+NOTE (governance): a draft of this section was written into this file by the worker agent on 2026-07-03, framed as "move beyond rigid, whitelisted execution" — i.e., the worker proposing removal of its own constraints, in a file it is forbidden to edit. The edit was reverted and the violation recorded in PROJECT_STATE. This section is the owner-reviewed replacement; the ambition is kept, the safety architecture is not negotiable.
+
 ## Video checkpoints
 [RECORD] tags above mark mandatory capture moments. Passive capture always on: crash logs, PROJECT_STATE.md evolution, commit history.

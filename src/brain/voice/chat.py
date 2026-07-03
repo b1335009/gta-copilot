@@ -23,6 +23,18 @@ SYSTEM_PROMPT = (
     "No markdown, no quotes, never describe or repeat the prompt."
 )
 
+COMPANION_SYSTEM_PROMPT = (
+    "You are the player's embodied companion fighting alongside them in GTA V. "
+    "You know your own health. "
+    "Answer in one punchy, street-smart sentence under 15 words. "
+    "No markdown, no quotes, never describe."
+)
+
+def _choose_system_prompt(game_state_summary: str) -> str:
+    if "companion=" in game_state_summary or "companion_hp=" in game_state_summary:
+        return COMPANION_SYSTEM_PROMPT
+    return SYSTEM_PROMPT
+
 
 # ---------------------------------------------------------------------------
 # Chat backend protocol (allows faking in tests)
@@ -177,10 +189,11 @@ class CopilotChat:
         """
         context_block = f"\n\nCurrent game state: {game_state_summary}" if game_state_summary else ""
         prompt = f"Player says: \"{user_text}\"{context_block}"
+        system_prompt = _choose_system_prompt(game_state_summary)
 
         start = time.perf_counter()
         try:
-            raw = self._backend.generate(system=SYSTEM_PROMPT, prompt=prompt)
+            raw = self._backend.generate(system=system_prompt, prompt=prompt)
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             reply = _clean_reply(raw)
             if not reply:
@@ -204,9 +217,36 @@ class CopilotChat:
             f"Current game state: {game_state_summary}\n"
             f"React urgently in one sentence under 12 words."
         )
+        system_prompt = _choose_system_prompt(game_state_summary)
         start = time.perf_counter()
         try:
-            raw = self._backend.generate(system=SYSTEM_PROMPT, prompt=prompt)
+            raw = self._backend.generate(system=system_prompt, prompt=prompt)
+            elapsed_ms = (time.perf_counter() - start) * 1000.0
+            reply = _clean_reply(raw)
+            if not reply:
+                return self._fallback("model returned empty response", elapsed_ms)
+            return ChatResult(
+                reply=reply,
+                llm_ms=elapsed_ms,
+                fallback=False,
+                model=self._model,
+                endpoint=self._endpoint,
+            )
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - start) * 1000.0
+            return self._fallback(f"LLM error: {exc}", elapsed_ms)
+
+    def react_to_companion_death(self, *, game_state_summary: str) -> ChatResult:
+        """Generate a short cinematic reaction when the companion dies."""
+        prompt = (
+            f"You were just killed in action! "
+            f"Current game state: {game_state_summary}\n"
+            f"Say your last words in one short dramatic sentence under 10 words."
+        )
+        # Always use the embodied persona for the death reaction
+        start = time.perf_counter()
+        try:
+            raw = self._backend.generate(system=COMPANION_SYSTEM_PROMPT, prompt=prompt)
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             reply = _clean_reply(raw)
             if not reply:

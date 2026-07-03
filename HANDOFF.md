@@ -1,45 +1,41 @@
-# HANDOFF — Phase 5c (Antigravity)
+# HANDOFF — Phase 6 (Antigravity)
 
 ## Date: 2026-07-03
 
-## Checklist status
+## Phase 6 Checklist status
 
-### ✅ Item 1: `heal_player` intents
-- Added patterns: `heal me`, `patch me up`, `fix me up`, `i need health`
-- Implemented `confirmation_phrase` handling for `heal_player`.
-- Added unit tests.
+### ✅ 1. Intents
+- Added `_STAY_PATTERNS` ("wait here", "stay here", "hold position", "stay put") and `_FOLLOW_PATTERNS` ("follow me", "on me", "come with me", "keep up").
+- Hardened logic to explicitly not match bare "let's go".
 
-### ✅ Item 2: `spawn_companion` phrases gap
-- Added patterns: `give/get/bring me a/another companion|bodyguard|buddy`
-- Added unit tests that execute these specific combinations.
+### ✅ 2. Confirmation/failure phrases
+- Added `companion_stay` → "Holding position."
+- Added `companion_follow` → "Right behind you."
+- Added nacks for no companion ("I'm not out there yet — call backup first.") and dead companion ("He didn't make it, boss.").
 
-### ✅ Item 3: Bounded C# Change, build, hash, deploy
-- Edited `HelloCopilot.cs` exclusively: Replaced the `heal_player` `nack` with actual execution (`ExecuteHealPlayer()`).
-- Kept inside OnTick thread check using `Game.Player.Character.Health = MaxHealth` alongside null checks as per Phase 5c EXCEPTION.
-- Checked tasklist for the game process, confirmed non-running since output returned empty.
-- Built via MSBuild (`Release` config) - successful.
-- Target Hash verification:
-  **Built DLL**:
-  - Size: 20992 bytes
-  - SHA256: F98EA88ABD7DA338BB575E5DBBD04B0073BC88459E5FE813EB572DC7683A2257
+### ✅ 3. Persona 6c in chat.py
+- Created `COMPANION_SYSTEM_PROMPT` in `chat.py`. 
+- Modified `reply` and `react_to_wanted` to detect companion presence (`companion=` or `companion_hp=`) in the game-state summary. If a companion is present or dead, the persona organically shifts to the first-person embodied companion.
 
-  **Deployed DLL (copied to C:\Program Files\Epic Games\GTAVEnhanced\scripts\GtaCopilot.Mod.dll)**:
-  - Size: 20992 bytes
-  - SHA256: F98EA88ABD7DA338BB575E5DBBD04B0073BC88459E5FE813EB572DC7683A2257
-  Hashes match post-copy.
+### ✅ 4. Companion-death awareness
+- Inserted companion death detection in `state_listener_thread` (`src/brain/copilot.py`). Triggers when `companion.dead` flips from false to true.
+- Automatically pushes `STATUS` tag to the overlay and speaks a short dramatic line by generating via `chat.react_to_companion_death()`, keeping the existing reaction/speech loop.
 
-### ✅ Item 4: Full suite green
-- Ran the brain unit test suite via `python -m unittest discover tests`, executing **70 tests**.
-- All **70 tests** passed.
+### ✅ 5. Gesture intent
+- Implemented `_GESTURE_PATTERNS`. Captures "wave", "say hi", "wave at me" -> `name="wave"` and "nod" -> `name="nod"`. (No false positive on "waive the fee").
+- Added spoken confirmation.
 
-### ✅ Item 5: Unchanged files freeze maintained
-- Verified Port, Protocol, `ACTION_WHITELIST.md`, `ROADMAP.md` completely unchanged.
-- `PROJECT_STATE.md` completely untouched.
-- `src/mod/**` changes were strictly restricted to the `heal_player` execution inside `HelloCopilot.cs`.
+### ✅ 6. Tests
+- Total Brain unit test suite passed successfully with **86/86** tests green. Added test classes handling Phase 6 intent matcher and Chat persona transitions.
+
+### ✅ 7. Frozen constraints
+- Carefully avoided touching `src/mod/**`, builds, deployments, or modifying `PROJECT_STATE.md` and whitelists. Adhered strictly to the Phase 6 constraints. No crashes or deployment changes performed.
 
 ## Files Changed
-- `src/brain/actions.py` - Updated intent matcher
-- `tests/brain/test_actions.py` - Added 9 new tests (moved up to 70 total)
-- `src/mod/HelloCopilot.cs` - Replaced `heal_player` stub with actual native call.
-  
-All items checked out. Milestone 4 finale ready. 🚀
+- `src/brain/actions.py` - Setup patterns and string templates.
+- `tests/brain/test_actions.py` - False positives, missing intents testing and string assertions.
+- `src/brain/voice/chat.py` - `COMPANION_SYSTEM_PROMPT`, state injection, `react_to_companion_death()`.
+- `tests/brain/test_voice.py` - Chat persona generation tests.
+- `src/brain/copilot.py` - Overlay trigger integration for companion death.
+
+Ready for Milestone 6!

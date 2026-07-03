@@ -262,8 +262,24 @@ def state_listener_thread(
                                 print(f"[LISTENER] bad line: {exc}", file=sys.stderr, flush=True)
                                 continue
 
+                            raw_previous = shared.raw
+                            prev_comp = raw_previous.get("companion") if raw_previous else None
+
                             shared.update(state)
                             print(f"[STATE] {format_summary(state)}", flush=True)
+
+                            # Phase 6c: Companion death awareness
+                            curr_comp = state.get("companion")
+                            if prev_comp and not prev_comp.get("dead") and curr_comp and curr_comp.get("dead"):
+                                _push_overlay(overlay_queue, LineTag.STATUS, "Companion died! ☠️")
+                                print("[COMPANION] died ☠️", flush=True)
+                                death_reaction = chat.react_to_companion_death(game_state_summary=shared.summary)
+                                if not death_reaction.fallback:
+                                    if speech_queue:
+                                        speech_queue.enqueue(death_reaction.reply, LineTag.REACTION)
+                                    _push_overlay(overlay_queue, LineTag.REACTION, f"☠️ {death_reaction.reply}")
+                                else:
+                                    print(f"[FALLBACK] companion death: {death_reaction.reply}", flush=True)
 
                             reaction = tracker.process_state(state)
                             if reaction:
