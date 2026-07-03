@@ -589,6 +589,14 @@ class Phase6IntentTests(unittest.TestCase):
             self.assertIsNotNone(intent, phrase)
             self.assertEqual(intent.action, "companion_follow", phrase)
 
+    def test_wait_for_me_is_a_stay_command(self):
+        from src.brain.actions import match_intent
+
+        for phrase in ["can you wait for me?", "wait up", "wait there"]:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "companion_stay", phrase)
+
     def test_panicked_speech_is_not_a_follow_command(self):
         from src.brain.actions import match_intent
 

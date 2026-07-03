@@ -217,8 +217,7 @@ namespace GtaCopilot.Mod
                 blip.Color = BlipColor.Blue;
             }
 
-            // Preload gesture anim dicts so companion_gesture is instant later
-            Function.Call(Hash.REQUEST_ANIM_DICT, "mp_player_int_upperwave");
+            // Preload the gesture anim dict so companion_gesture is instant later
             Function.Call(Hash.REQUEST_ANIM_DICT, "gestures@m@standing@casual");
 
             companion = ped;
@@ -292,15 +291,17 @@ namespace GtaCopilot.Mod
                 return err;
             }
 
-            string dict, anim;
+            // Both gestures live in the same known-good dict — the previous
+            // wave dict (mp_player_int_upperwave) never reported loaded in the
+            // live session, so it was likely an invalid name for this build.
+            string dict = "gestures@m@standing@casual";
+            string anim;
             switch ((gestureName ?? string.Empty).ToLowerInvariant())
             {
                 case "wave":
-                    dict = "mp_player_int_upperwave";
-                    anim = "mp_player_int_wave_01";
+                    anim = "gesture_hello";
                     break;
                 case "nod":
-                    dict = "gestures@m@standing@casual";
                     anim = "gesture_nod_yes_hard";
                     break;
                 default:

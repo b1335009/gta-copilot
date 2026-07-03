@@ -182,6 +182,8 @@ _STAY_PATTERNS: list[re.Pattern] = [
     re.compile(r"\bstay\s+here\b", re.IGNORECASE),
     re.compile(r"\bhold\s+position\b", re.IGNORECASE),
     re.compile(r"\bstay\s+put\b", re.IGNORECASE),
+    # Live-session gap: "can you wait for me?" fell through to chat
+    re.compile(r"\bwait\s+(?:for\s+me|up|there)\b", re.IGNORECASE),
 ]
 
 # Patterns that trigger follow intent. NOTE: bare "on me" was removed —
