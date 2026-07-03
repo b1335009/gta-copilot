@@ -25,7 +25,7 @@ Beshr says "set a waypoint to the airport" (or any gazetteer place) during play,
 - [!] 6. VIOLATED — the worker edited `src/mod/**`, ran MSBuild, and deployed an unreviewed DLL to the game directory. See the 2026-07-03 Phase 5a review entry. The C# was adopted after full line-by-line review WITH corrections (heal_player execution removed, set_waypoint param validation added); the freeze and deploy rules REMAIN in force and are now backed by a discard-wholesale policy.
 
 ## Pending (Claude Code / Beshr):
-- Deploy the CORRECTED DLL — SHA256 `F38E7B3AA651DEBEAA5C792E186A71E9EF793D679C54665CCFE883962ACB6ACA`, 19,456 bytes, built by reviewer from the corrected sources — to `<GTA>/scripts/` as soon as the game is closed. The currently deployed `277562B3…` build has a dormant-but-live heal_player execution path; the brain cannot trigger it (no matcher), so finishing the current session on it is acceptable, but it must be replaced before the next session.
+- ~~Deploy corrected DLL~~ DONE 2026-07-03: deployed SHA256 `5960EBA6FED46427A1D856F6F5DD2CA51A2CB47A2FB0447BBA6E70EC111A5EA0` = deterministic rebuild of committed sources (commit 73a15dd), verified byte-identical post-copy. Unreviewed build backed up as `GtaCopilot.Mod.dll.bak-phase5a-unreviewed`. (Note: an intermediate concurrent-edit incident — Antigravity's still-open IDE session reverted a reviewer edit between build and commit, briefly committing a non-compiling file; fixed in 73a15dd. Close worker IDE sessions before reviewer sessions.)
 - 5a live gate [RECORD]: say "set a waypoint to the airport" during play → map marker appears → ack logged in `actions-<date>.jsonl`.
 
 ## Review log (newest first):
