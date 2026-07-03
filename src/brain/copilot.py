@@ -506,14 +506,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         except Exception as exc:
             print(f"[INIT] WARNING: TTS init failed ({exc}), spoken output disabled", flush=True)
 
-    # Phase 5a: action client (shared between listener + voice loop)
-    action_client = ActionClient(
-        logs_dir=args.logs_dir,
-        on_overlay=(
-            (lambda text: _push_overlay(overlay_q, LineTag.ACTION, text))
-            if overlay_q else None
-        ),
-    )
+    # Phase 5a: action client (shared between listener + voice loop).
+    # No on_overlay callback — the voice loop pushes its own ACTION lines
+    # (request/ack/nack/timeout); wiring both painted every event twice.
+    action_client = ActionClient(logs_dir=args.logs_dir)
     print("[INIT] action client ready", flush=True)
 
     # Start listener thread

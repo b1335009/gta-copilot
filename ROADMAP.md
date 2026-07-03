@@ -25,7 +25,7 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - Gate: chat log readable during play. — **PASSED 2026-07-03**: Beshr's screenshot shows the overlay floating over the game with a live conversation and three color-coded wanted reactions, clearly readable.
 
 ## Milestone 4 — Actions (session 3/4)
-- [ ] Phase 5a: set waypoint by voice.
+- [x] Phase 5a: set waypoint by voice. (**PASSED 2026-07-03**: live "Take me to the airport, set a waypoint" → mod ack `ok:true` logged, marker on map. Full request→whitelist→script-thread→ack chain worked first live try.)
 - [ ] Phase 5b: spawn companion, follows and protects.
 - [ ] Phase 5c: heal on command.
 - Each action added one at a time, tested individually, logged. Whitelist edited by Claude Code only.
