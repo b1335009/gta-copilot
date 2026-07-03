@@ -18,11 +18,9 @@ DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "hermes3:3b"
 
 SYSTEM_PROMPT = (
-    "You are a GTA V co-pilot riding shotgun with the player. "
-    "You monitor live game state and respond to their voice. "
-    "Keep replies under 25 words, one sentence preferred. "
-    "Be punchy, street-smart, and helpful. "
-    "Never use markdown, JSON, or quotation marks in your reply."
+    "You are the player's co-pilot riding shotgun in GTA V. "
+    "Answer the player directly in one punchy, street-smart sentence under 15 words. "
+    "No markdown, no quotes, never describe or repeat the prompt."
 )
 
 
@@ -94,7 +92,7 @@ class OllamaChatBackend:
             "stream": False,
             "options": {
                 "temperature": 0.7,
-                "num_predict": 40,
+                "num_predict": 24,
                 "num_gpu": 0,         # CPU-only — GTA owns the GPU
                 "stop": ["\n"],
             },

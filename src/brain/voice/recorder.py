@@ -124,12 +124,8 @@ class PTTRecorder:
     audio_backend: AudioBackend = field(default_factory=SounddeviceBackend)
     hotkey_backend: HotkeyBackend = field(default_factory=KeyboardHotkeyBackend)
 
-    def wait_and_record(self) -> Recording:
-        """Block until PTT is pressed, record while held, return on release."""
-        # 1) Wait for key-down
-        self.hotkey_backend.wait(self.ptt_key, suppress=False)
-
-        # 2) Record while key is held
+    def _record_core(self) -> Recording:
+        """Shared capture logic: record while PTT is held, return on release."""
         chunks: list[np.ndarray] = []
         lock = threading.Lock()
 
@@ -166,42 +162,13 @@ class PTTRecorder:
             duration_s=elapsed,
         )
 
+    def wait_and_record(self) -> Recording:
+        """Block until PTT is pressed, record while held, return on release."""
+        self.hotkey_backend.wait(self.ptt_key, suppress=False)
+        return self._record_core()
+
     def record_once(self) -> Optional[Recording]:
         """Non-blocking variant: record if PTT is currently pressed, else None."""
         if not self.hotkey_backend.is_pressed(self.ptt_key):
             return None
-
-        chunks: list[np.ndarray] = []
-        lock = threading.Lock()
-
-        def _audio_callback(indata: np.ndarray, frames: int,
-                            time_info: Any, status: Any) -> None:
-            with lock:
-                chunks.append(indata.copy().flatten())
-
-        stream = self.audio_backend.start_stream(
-            samplerate=self.samplerate,
-            channels=CHANNELS,
-            dtype=DTYPE,
-            callback=_audio_callback,
-        )
-
-        start = time.perf_counter()
-        try:
-            while self.hotkey_backend.is_pressed(self.ptt_key):
-                time.sleep(0.01)
-        finally:
-            self.audio_backend.stop_stream(stream)
-        elapsed = time.perf_counter() - start
-
-        with lock:
-            if chunks:
-                audio = np.concatenate(chunks)
-            else:
-                audio = np.array([], dtype=np.int16)
-
-        return Recording(
-            audio_int16=audio,
-            samplerate=self.samplerate,
-            duration_s=elapsed,
-        )
+        return self._record_core()

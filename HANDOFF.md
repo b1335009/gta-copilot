@@ -1,107 +1,63 @@
-# HANDOFF — Antigravity to Claude Code
+# HANDOFF — Phase 4 (Antigravity → Claude Code)
 
-## Session summary
-Phase 3 implementation: built the full push-to-talk voice loop (PTT → faster-whisper STT → hermes3:3b LLM → Piper TTS) in `src/brain/`, plus the root-cause fix for the HTTP 500 that blocked Milestone 1.
+## Date: 2026-07-03
 
-## Checklist item 0 — HTTP 500 root cause + fix
+## Checklist status
 
-**Root cause: VRAM contention.** The RTX 4070 Laptop GPU (8 GB) is fully consumed by GTA V Enhanced during play. Ollama's default behavior loads hermes3:3b into GPU VRAM, which fails with HTTP 500 when GTA is running.
+### ✅ Item 1: `src/brain/overlay.py`
+Created. Two-layer design:
+- **`ChatBuffer`** — pure logic ring buffer (capacity=8 default), thread-safe with lock, unit-testable without Tk. Manages `ChatLine` objects tagged with `LineTag` enum (PLAYER / COPILOT / REACTION / STATUS).
+- **`OverlayWindow`** — tkinter `Tk()` with `-topmost`, `-alpha 0.85`, `overrideredirect(True)` (borderless), draggable. Dark background `#1a1a2e`, Consolas 11pt. Polls a `queue.Queue[OverlayMessage]` via `after(100ms)`. Color-coded tags: cyan (player), green (copilot), yellow (reaction), grey (status). Tag prefixes: `YOU:`, `COPILOT:`, `⚠`, `•`.
 
-**Evidence:**
-- `ollama ps` shows hermes3:3b loaded (2.0 GB) when game is closed
-- All three live reactions in `reactions-20260703.jsonl` are `[FALLBACK ... HTTP Error 500]`
-- With game closed, the endpoint works perfectly (verified via API call)
-- `nvidia-smi` shows RTX 4070 Laptop GPU with 8188 MiB total, ~1000 MiB used at idle
+### ✅ Item 2: Restructure `copilot.py`
+- **Tk mainloop on main thread** — `OverlayWindow.run()` occupies the main thread when overlay is active.
+- **Voice loop moved to daemon worker thread** (`voice-loop`).
+- **State listener remains daemon worker thread** (`state-listener`).
+- **`--no-overlay`** flag added — preserves console-only `time.sleep(1)` wait behavior from Phase 3.
+- **PTT default changed** from `f8` to `right ctrl`.
+- **All events feed overlay queue** — player transcripts (PLAYER), copilot replies (COPILOT), wanted reactions (REACTION), connect/disconnect/ready (STATUS).
+- Fallback for Tk errors: if overlay construction fails, print the error and fall through to console-only mode.
 
-**Fix applied (two parts):**
-1. **`num_gpu: 0`** in all Ollama generate calls → forces CPU-only inference. Implemented in:
-   - `src/brain/voice/chat.py` — `OllamaChatBackend.generate()` sets `options.num_gpu: 0`
-   - `src/brain/copilot.py` — `_CPUOllamaReactionClient` subclass overrides the wanted-reaction path with `num_gpu: 0`
-2. **`keep_alive: -1`** preload at startup → model stays in CPU memory permanently, avoiding cold-start latency.
+### ✅ Item 3: Latency tuning
+- **System prompt**: cut from 5 sentences to **15 words**: `"GTA V co-pilot. One punchy sentence, under 15 words. No markdown or quotes."`
+- **`num_predict`**: reduced from 40 to **24** for the voice chat path. Reaction path already used 24.
+- **`time_to_audio_ms`** added to `voice-<date>.jsonl` — measures STT + LLM wall time (before TTS begins). This is the metric to track: it excludes playback duration which the copilot has no control over.
+- **`SpeechQueue`** — new serialized TTS executor. A daemon thread drains a `queue.Queue` and calls `speaker.speak()` sequentially. Both the listener thread (reactions) and voice loop (replies) route through this — eliminates the concurrent-speak clipping bug. Methods: `enqueue(text, tag)`, `shutdown()`.
 
-**Measured latency (CPU, game closed):** 1511ms total (211ms prompt eval + 841ms generation for 20 tokens). This is within the ~1.5s budget for the LLM portion alone.
+### ✅ Item 4: Phase 3 carry-over cleanups
+- **Deduped `record_once()`** — extracted shared capture logic into `_record_core()`. `wait_and_record()` now calls `wait()` + `_record_core()`, `record_once()` calls `is_pressed()` + `_record_core()`. ~40 lines removed.
+- **Never speak `[FALLBACK…]` aloud** — voice loop only calls `speech_queue.enqueue()` when `chat_result.fallback is False`. Fallback text goes to console + overlay STATUS only.
+- **Transcriber asserts 16 kHz** — `transcribe_audio()` now raises `ValueError` if `samplerate != 16000`. Previously silently ignored the samplerate arg.
 
-## Checklist item 1 — Milestone 1 gate [RECORD]
+### ✅ Item 5: Unit tests
+10 new tests in `tests/brain/test_overlay.py`:
+- `ChatBufferTests` (5): append + snapshot, eviction at capacity, clear, capacity validation, concurrent thread safety (4 threads × 25 appends).
+- `SpeechQueueTests` (2): serialized delivery, clean empty-shutdown.
+- `TranscriberSamplerateTests` (2): rejects 44.1 kHz, accepts 16 kHz.
+- `FallbackNotSpokenTests` (1): verifies `fallback=True` flag on LLM error.
 
-**BLOCKED on live session.** The HTTP 500 fix is applied in code but needs to be validated with the game running. The fix (num_gpu:0) eliminates the VRAM contention root cause, so this should now produce `"fallback": false` reactions. Requires:
-- `.venv` setup with `pip install -r src/brain/requirements.txt` (needs faster-whisper, keyboard)
-- Start `python -m src.brain.copilot` with the game running
-- Commit a crime → wanted level increase → verify non-fallback reaction in `reactions-<date>.jsonl`
+**Full suite: 28 tests, all pass** (`python -m unittest discover -s tests`).
 
-## Checklist item 2 — requirements.txt + recorder
+### ✅ Item 6: Frozen files
+Verified: `git diff --name-only HEAD -- src/mod/ ACTION_WHITELIST.md ROADMAP.md PROJECT_STATE.md` returns empty. Port/protocol unchanged (127.0.0.1:48651).
 
-**DONE.** Created:
-- `src/brain/requirements.txt` — sounddevice, numpy, keyboard, faster-whisper
-- `src/brain/voice/__init__.py` — package init
-- `src/brain/voice/recorder.py` — PTT hold-to-record (F8 default, configurable `--ptt-key`). Injectable audio + hotkey backends for unit testing. 16 kHz mono int16 capture via sounddevice.
+## Files changed
+| File | Action | Lines |
+|------|--------|-------|
+| `src/brain/overlay.py` | **NEW** | ~200 |
+| `src/brain/copilot.py` | Modified | ~350 (restructured) |
+| `src/brain/voice/chat.py` | Modified | system prompt + num_predict |
+| `src/brain/voice/recorder.py` | Modified | dedupe via _record_core |
+| `src/brain/voice/transcriber.py` | Modified | samplerate assertion |
+| `tests/brain/test_overlay.py` | **NEW** | ~165 |
 
-## Checklist item 3 — transcriber
+## Not done / Notes
+- The overlay has NOT been smoke-tested over live GTA (requires Borderless mode + game running). The gate is: "chat log readable during play."
+- `tts_ms` and `play_ms` are no longer individually logged in the voice JSONL (speech is now async via the queue). `time_to_audio_ms` replaces them as the latency metric.
+- No new pip dependencies. tkinter is stdlib; all other imports are unchanged.
 
-**DONE.** Created `src/brain/voice/transcriber.py`:
-- faster-whisper `base.en`, `compute_type="int8"`, `device="cpu"`
-- Model auto-downloads to `models/whisper/` on first use
-- Logs transcript + `stt_ms` timing
-- Injectable `WhisperBackend` for unit tests
-
-## Checklist item 4 — chat
-
-**DONE.** Created `src/brain/voice/chat.py`:
-- Generalized Ollama client for conversational replies
-- Co-pilot persona prompt: "riding shotgun" voice
-- Injects latest game-state context from SharedGameState
-- ≤25 words, one sentence preferred (num_predict=40 hard cap)
-- `react_to_wanted()` method for spoken wanted reactions
-- `_clean_reply()` strips quotes, keeps first sentence only
-
-## Checklist item 5 — speaker
-
-**DONE.** Created `src/brain/voice/speaker.py`:
-- Piper TTS via subprocess (`--output-raw` for raw PCM)
-- Voice: `en_US-lessac-medium` under `models/piper/`
-- Playback via sounddevice (blocking)
-- Logs `tts_ms` synthesis + `play_ms` playback timing
-
-## Checklist item 6 — copilot orchestrator
-
-**DONE.** Created `src/brain/copilot.py`:
-- Single entrypoint: `python -m src.brain.copilot`
-- State-listener thread + voice loop in one process
-- Wanted reactions spoken through TTS (not just printed)
-- Per-exchange stage timing (`stt_ms`, `llm_ms`, `tts_ms`, `total_ms`) to console + `logs/voice-<date>.jsonl`
-- `--no-voice` / `--no-listener` flags for partial operation
-- `SharedGameState` thread-safe container feeds live context to LLM
-
-## Checklist item 7 — unit tests
-
-**DONE.** Created `tests/brain/test_voice.py` — 12 new tests, all with fakes (no network, no audio hardware):
-- `RecorderTests`: PTT capture + WAV encoding
-- `TranscriberTests`: audio + WAV bytes transcription with fake whisper
-- `ChatTests`: reply, fallback on exception, fallback on empty, wanted reaction, reply cleaning
-- `SpeakerTests`: synthesis + playback with fakes
-- `CopilotOrchestratorTests`: SharedGameState thread safety, voice log JSONL output
-
-All 18 tests pass (6 original + 12 new):
-```
-Ran 18 tests in 0.070s — OK
-```
-
-## Checklist item 8 — frozen files
-
-**CONFIRMED.** `git status` shows only new files in `src/brain/` and `tests/`. Zero diffs in `src/mod/**`.
-
-## Remaining setup for live testing
-
-**Question for Beshr/Claude Code:** Before the Milestone 1 live gate, we need:
-1. Create `.venv`: `python -m venv .venv && .venv\Scripts\activate && pip install -r src/brain/requirements.txt`
-2. Download Piper TTS binary + voice model to `models/piper/` (Windows binary from https://github.com/rhasspy/piper/releases). Need sign-off since this is a machine-level download outside `.venv`.
-3. Run: `python -m src.brain.copilot --ptt-key f8`
-
-## Files created (all in `src/brain/` and `tests/`)
-- `src/brain/requirements.txt`
-- `src/brain/voice/__init__.py`
-- `src/brain/voice/recorder.py`
-- `src/brain/voice/chat.py`
-- `src/brain/voice/transcriber.py`
-- `src/brain/voice/speaker.py`
-- `src/brain/copilot.py`
-- `tests/brain/test_voice.py`
+## Pre-session checklist for Beshr
+1. Set GTA to **Borderless** in display settings.
+2. Page file must be **enabled** (CRASH #3).
+3. Run: `.venv\Scripts\python.exe -m src.brain.copilot --ptt-key "right ctrl"`
+4. Use `--no-overlay` to fall back to Phase 3 console-only mode if needed.

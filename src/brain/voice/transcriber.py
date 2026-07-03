@@ -81,7 +81,15 @@ class Transcriber:
         self._backend = backend or FasterWhisperBackend()
 
     def transcribe_audio(self, audio_int16: np.ndarray, *, samplerate: int = 16_000) -> TranscriptionResult:
-        """Transcribe int16 audio samples. Returns text + stt_ms."""
+        """Transcribe int16 audio samples. Returns text + stt_ms.
+
+        Raises ValueError if *samplerate* is not 16 000 Hz —
+        faster-whisper expects 16 kHz and would produce garbage otherwise.
+        """
+        if samplerate != 16_000:
+            raise ValueError(
+                f"transcriber requires 16 kHz audio, got {samplerate} Hz"
+            )
         audio_f32 = audio_int16.astype(np.float32) / 32768.0
         start = time.perf_counter()
         text = self._backend.transcribe(audio_f32, samplerate=samplerate)
