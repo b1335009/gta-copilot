@@ -26,7 +26,7 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 
 ## Milestone 4 — Actions (session 3/4)
 - [x] Phase 5a: set waypoint by voice. (**PASSED 2026-07-03**: live "Take me to the airport, set a waypoint" → mod ack `ok:true` logged, marker on map. Full request→whitelist→script-thread→ack chain worked first live try.)
-- [ ] Phase 5b: spawn companion, follows and protects.
+- [x] Phase 5b: spawn companion, follows and protects. (**PASSED 2026-07-03**: "spawn a companion" → armed ped, blue blip, group AI follow/defend; `spawn_companion ack_ok:true` logged live.)
 - [ ] Phase 5c: heal on command.
 - Each action added one at a time, tested individually, logged. Whitelist edited by Claude Code only.
 - Gate: full payoff run — chase or firefight with state awareness, voice, and actions live. [RECORD, this is the hook clip]
