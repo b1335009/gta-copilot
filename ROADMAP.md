@@ -38,8 +38,8 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - Gate: live session — Beshr commands the companion by voice (stay → walk away → follow), and the copilot comments on the companion's state unprompted or when asked. [RECORD]
 
 ## Milestone 7 — Alpha release (opened 2026-07-03 per Beshr: "get the alpha out there")
-- [ ] v0.1.0-alpha on GitHub: rewritten README (install, troubleshooting, safety model), MIT LICENSE, scripts/setup.ps1 one-shot brain installer, scripts/run.ps1, tagged release with the mod DLL as the asset (SHV/SHVDN never bundled — license).
-- Gate: a stranger with GTA V Enhanced can go from git clone to a talking copilot using only the README.
+- [x] v0.1.0-alpha SHIPPED 2026-07-03: https://github.com/b1335009/gta-copilot (public, MIT) — rewritten README, setup/run scripts, tagged release with the mod DLL asset (SHA256 `7A5A5831…` = commit 2421925; SHV/SHVDN not bundled — license).
+- Gate (open): a stranger with GTA V Enhanced goes from git clone to a talking copilot using only the README. First outside installer report closes it.
 
 ## Milestone 5 — Nightly agents (v2, deferred behind Milestone 6 by owner decision)
 - [ ] Connect ONE nightly agent first (Antigravity scheduled task, or Codex, or Jules — pick one, not three).
