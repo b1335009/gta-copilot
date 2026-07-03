@@ -2,38 +2,35 @@
 
 Owner: Claude Code (Fable 5). The worker agent — **Google Antigravity** as of Phase 3 (replaced Hermes, Beshr's call 2026-07-03) — reads this file, works the checklist, then writes results to HANDOFF.md. The worker never edits this file.
 
-## Current phase: 3
+## Current phase: 4
 
-## Definition of done for this phase:
-Push-to-talk voice loop: Beshr holds the PTT key, speaks, releases; the brain transcribes (faster-whisper), generates a short reply (local hermes3:3b with live game-state context), and speaks it (Piper TTS). Round trip from PTT release to audio start ~1.5 s or better (measure and report; soft target).
-
-TWO gates, both [RECORD]:
-1. CARRIED Milestone 1 gate: a live (not replay) wanted-level increase produces a real, non-fallback hermes3:3b comment. This did NOT pass in Phase 2 (see review log) and blocks everything else.
-2. Milestone 2 gate: first spoken exchange during live gameplay. Do not script the reaction.
+## Definition of done for this phase (Milestone 3 — overlay, short session):
+A transparent, always-on-top chat panel floats over borderless GTA showing the conversation live: player transcripts, copilot replies, and wanted reactions, color-coded. Gate: chat log readable during play. Secondary goal, same session: cut voice latency — time-to-first-audio (stt+llm+tts) from the measured ~5–7 s down to ≤5 s median, via shorter replies.
 
 ## Architecture decisions for this phase (Claude Code, binding):
-- Phase 3 is Python-only, in `src/brain/` and `tests/`. `src/mod/**` and the csproj are FROZEN — any diff there from the worker is an automatic FAIL. DLL rebuilds/deploys are Claude Code/Beshr only, permanently (consequence of the Phase 2 hash-chain break).
-- GPU budget: GTA owns the GPU during play. STT is faster-whisper `base.en`, `compute_type="int8"`, `device="cpu"`. For the LLM, first root-cause the live HTTP 500 (checklist item 0); expected cause is VRAM contention. Preferred fix order: preload model + `keep_alive: -1` before the session → if it still 500s with the game running, force CPU inference (`options.num_gpu: 0`) and measure latency.
-- Dependencies: repo-local `.venv` (already gitignored), pinned in a committed `src/brain/requirements.txt`. Whisper/Piper model files live under `models/` (gitignored). Downloads limited to `.venv` and `models/`; anything else machine-level needs sign-off BEFORE doing it, in HANDOFF as a question.
-- PTT: `keyboard` global hotkey, default `F8`, configurable `--ptt-key`. Hold-to-record; 16 kHz mono int16 capture via `sounddevice`.
-- TTS: Piper, voice `en_US-lessac-medium` under `models/`, playback via `sounddevice`.
-- Prompt: co-pilot persona; inject the latest state summary from the running listener; replies ≤ 25 words, one sentence preferred (keeps TTS fast).
-- Single entrypoint `src/brain/copilot.py`: state-listener thread + voice loop in one process. Wanted-level reactions are also spoken through TTS, not just printed.
-- Instrumentation: per-exchange stage timing (`stt_ms`, `llm_ms`, `tts_ms`, `total_ms`) printed to console and appended to `src/brain/logs/voice-<date>.jsonl`.
-- Evidence rule (new, permanent): every evidence file or transcript pasted in HANDOFF must be produced by code that is committed in the repo. Hand-written or draft-script output presented as run evidence is an automatic FAIL (see review log, `listener_output.txt`).
+- Still Python-only in `src/brain/` + `tests/`. `src/mod/**` remains FROZEN; no DLL work. Port/protocol unchanged. Evidence rule from Phase 3 stands (all HANDOFF evidence from committed code).
+- Overlay is a **separate always-on-top window drawn by the brain process** — NOT an in-game DirectX overlay (no mod changes, no injection). Tech: **tkinter** (stdlib, zero new deps): `-topmost`, `-alpha` ≈ 0.85, dark translucent panel, no focus stealing, shows the last ~8 lines color-coded (player / copilot / reaction / status).
+- GTA must run in **Borderless** display mode for the overlay to sit on top (also mitigates the swapchain-alloc crash class — see CRASH #3).
+- Threading restructure: tkinter mainloop OWNS the main thread; voice loop and state listener move to worker threads; UI updates flow through a thread-safe queue polled with `after()`. `--no-overlay` preserves today's console-only behavior.
+- Latency: voice replies shortened — system prompt ≤15 words, `num_predict: 24` (matches the reaction path). Log `time_to_audio_ms` (stt+llm+tts, excludes playback) per exchange. A single speech queue serializes ALL TTS output so the listener thread and voice loop can never clip each other's audio.
+- PTT default key changes to `right ctrl` (F8 collided with GTA's character-switch keys in the live session; right ctrl is unbound in-game).
+- RAM note for sessions on this machine: the page file must stay enabled (see CRASH #3 root cause); the pinned CPU model is a 2.5 GB tenant by design.
 
 ## Worker checklist (Antigravity — next tasks):
-- [x] 0. Root-cause the live Ollama HTTP 500. DONE + reviewer-verified: VRAM contention; fix is `num_gpu: 0` (CPU inference) + `keep_alive: -1` preload. Reviewer found and fixed one bug in the fix (see review log: preload was loading the GPU runner).
-- [ ] 1. CARRIED MILESTONE 1 GATE [RECORD]: live session — wanted increase prints a hermes3:3b reaction with `"fallback": false` in `reactions-<date>.jsonl` during live play (not replay). Paste the log line in HANDOFF. Everything is set up — run: `.venv\Scripts\python.exe -m src.brain.copilot` from repo root, then start GTA. This is the ONLY open item; it needs Beshr at the wheel.
-- [x] 2. `src/brain/requirements.txt` + `.venv` setup; `src/brain/voice/recorder.py` — PTT hold-to-record (F8 default), unit-testable capture logic. (`.venv` created + deps installed by reviewer 2026-07-03.)
-- [x] 3. `src/brain/voice/transcriber.py` — faster-whisper base.en int8 CPU; logs transcript + `stt_ms`.
-- [x] 4. `src/brain/voice/chat.py` — generalize the Ollama client for conversational replies with latest game-state context, ≤ 25 words.
-- [x] 5. `src/brain/voice/speaker.py` — Piper TTS + playback; `tts_ms`. (Piper binary + en_US-lessac-medium installed to `models/piper/` by reviewer, sign-off granted.)
-- [x] 6. `src/brain/copilot.py` — orchestrator: listener thread + voice loop + spoken wanted reactions + per-stage timing to `logs/voice-<date>.jsonl`.
-- [x] 7. Unit tests with fakes for each stage — 18/18 pass on reviewer's independent run.
-- [x] 8. Frozen files untouched — verified via git diff (zero changes in `src/mod/**`, whitelist, roadmap, this file).
+- [ ] 1. `src/brain/overlay.py` — tkinter chat panel per the decisions above, fed by a thread-safe queue; keep the pure logic (line buffer, colors, trimming) separate from Tk so it's unit-testable without a display.
+- [ ] 2. Restructure `copilot.py`: Tk mainloop on main thread, voice loop + listener as workers, `--no-overlay` flag. All events (transcripts, replies, reactions, connect/disconnect) feed the overlay queue. Change PTT default to `right ctrl`.
+- [ ] 3. Latency: ≤15-word replies, `num_predict: 24` for voice, add `time_to_audio_ms` to `voice-<date>.jsonl`, single serialized speech queue (fixes concurrent-speak clipping).
+- [ ] 4. Phase 3 carry-over cleanups: dedupe `record_once()`/`wait_and_record()`; never speak the literal "[FALLBACK…]" string aloud (console-only); `transcriber` must resample or assert 16 kHz instead of silently ignoring `samplerate`.
+- [ ] 5. Unit tests with fakes for the overlay line-buffer logic and the speech queue; all existing 18 tests keep passing (`python -m unittest discover -s tests`).
+- [ ] 6. Do NOT touch: `src/mod/**`, DLL deploys, port/protocol (127.0.0.1:48651), ACTION_WHITELIST.md, ROADMAP.md, this file.
 
 ## Review log (newest first):
+- 2026-07-03 PHASE GATE — MILESTONE 1 AND MILESTONE 2 GATES BOTH PASSED, advanced 3 → 4. Live session evidence, verified by reviewer in listener-produced logs during play:
+  - Milestone 1 (carried from Phase 2): `reactions-20260703.jsonl` t=1783101183921 — wanted 0→1 at live position produced "Hastily restore health and armory, Officer!" with `"fallback": false`, model hermes3:3b. Further live reactions at 1→2 and 2→3, zero fallbacks all session. The num_gpu:0 fix held with the game running.
+  - Milestone 2: first spoken exchanges logged in `voice-20260703.jsonl` — 4+ full PTT→whisper→hermes3→Piper round trips. Highlight: player asked "Is the cops after me?" and the reply cited the LIVE injected state ("1 wanted star"); later, with state showing hp=0/200, "What happened now?" → "A cop caught a hint of your wanted level, ended up shootin' you down" — death inferred from raw state, no death detector exists in code.
+  - Session arc in state log: wanted 0→3, shootout, death (hp 200→0), hospital respawn — mod stream stable throughout (~500 lines, reconnects clean).
+  - Notes: PTT default F8 collided with GTA's character-switch keys — switched live to `right ctrl` via `--ptt-key`; Phase 4 should make `right ctrl` the default. Measured voice round trips ~9–11.7 s total, of which playback is 4–6.6 s; time-to-first-audio ~4.7–7.6 s — latency work is Phase 4 item 3.
+  - Beshr feature request (recorded for roadmap): an embodied AI companion — a second in-game character the copilot controls, "so we can both play." Mapped to Milestone 4 Phase 5b and beyond; noted in ROADMAP.
 - 2026-07-03 CRASH #3 ROOT CAUSE FOUND — Windows page file is DISABLED (AutomaticManagedPagefile=False, no pagefile.sys, empty PagingFiles registry). Commit limit therefore = physical RAM (31.6 GB); 24.3 GB was already committed by desktop apps (Antigravity 2.6 GB, Ollama/llama-server 2.5 GB pinned by our keep_alive=-1, Chrome 1.6, Claude 1.4, Epic 1.2, Hermes 1.0, …), leaving ~7 GB — under GTA V Enhanced's load-time commit. Game reported out-of-memory at boot. This unifies the night's failures: defrag OOM 23:39, driver errors + GTA/Explorer/Epic triple-crash 23:55 (allocation failures cascading), boot fail 00:56. The one successful boot (00:07) happened exactly when Ollama had failed to load = 2.5 GB more headroom. FIX: re-enable system-managed page file (admin) + reboot; close heavy apps before sessions. Our CPU-pinned model is a legitimate 2.5 GB tenant once the page file exists. Supersedes the driver-state hypothesis above (driver errors were a symptom, not the cause). — NOT our stack; GPU/driver-level, game never reached script load. Evidence: (a) tonight's boot (00:55:26) died between SHV's "Launching main() for ScriptHookVDotNet.asi" (00:56:42, last ScriptHookV.log line) and SHVDNE writing its own log — GtaCopilot.Mod was never loaded or instantiated; (b) the copilot brain wasn't even running, and Ollama held 0 MiB VRAM (100% CPU, verified via nvidia-smi + ollama ps); (c) 14.8 GB free RAM rules out memory pressure; (d) the machine has been up since 19:27 with nvlddmkm (NVIDIA driver) errors logged at 23:52, immediately followed at 23:55 by GTA5_Enhanced "Application Hang" PLUS Explorer.EXE and EpicGamesLauncher.exe faulting simultaneously — a driver-level event that took down multiple GPU apps at once. CORRECTION to the Phase 2 review: that 23:55 hang means Hermes's crash was REAL (WER Critical report exists); what remains false is its claimed fix — the 00:07 boot ran fine on the unmodified constructor-init DLL. Failure is intermittent (00:07 boot + 10-min live session worked between two failed boots). Recovery protocol: reboot the PC to clear driver state, keep AC power, close GPU-heavy extras (Chrome/Edge/CapCut) during sessions; if GTA shows ERR_GFX_D3D_SWAPCHAIN_ALLOC_* again, drop texture quality one notch or switch to Borderless (Phase 4 wants borderless anyway). If boots keep failing after a reboot, suspect the NVIDIA driver version before suspecting the mod.
 - 2026-07-03 Phase 3 items 0, 2–8 review — PASS with one must-fix found and fixed by reviewer. Antigravity's first session: honest report, claims matched evidence (a welcome contrast to Phase 2).
   - Verified independently: 18/18 unit tests pass on reviewer's own run; frozen files untouched (git diff clean on `src/mod/**`, whitelist, roadmap); all voice modules reviewed line-by-line — injectable backends, correct timing capture, sane fallback handling.
@@ -64,11 +61,9 @@ TWO gates, both [RECORD]:
 - 2026-07-01 Items 2/3/4 (install verification) — BLOCKED, not failed (later resolved). No GTA V install existed on this machine at review time.
 
 ## Blockers:
-- Both gates now need only a live game session with Beshr: start `.venv\Scripts\python.exe -m src.brain.copilot` (hold F8 to talk), launch GTA, commit a crime. IMPORTANT: verify hermes3:3b shows `100% CPU` in `ollama ps` before starting the game.
-- Round-trip latency is ~2.5–3.7 s (CPU LLM dominates), over the ~1.5 s soft target. Not a gate blocker; tuning options noted in the review log.
-- Deployed mod DLL state: `<GTA>/scripts/GtaCopilot.Mod.dll` = `f744cff8…` = deterministic build of HEAD sources, reviewer-verified 2026-07-03. No mod work needed or permitted in Phase 3.
+- None hard. Session prerequisites on this machine: page file stays enabled (CRASH #3), GTA set to Borderless before the overlay session, `ollama ps` should show hermes3:3b `100% CPU` (the copilot preload handles this).
+- Deployed mod DLL state: `<GTA>/scripts/GtaCopilot.Mod.dll` = `f744cff8…` = deterministic build of HEAD sources, reviewer-verified 2026-07-03. No mod work needed or permitted in Phase 4.
 
 ## [RECORD] cues:
-- Carried Milestone 1 money shot: game + brain console on screen together; stars appear → hermes3:3b line prints (must NOT say FALLBACK). Genuine reaction only.
-- Milestone 2 money shot: Beshr talks to the game, the game talks back — first full PTT → transcript → reply → voice round trip during live play. Keep the timing printout in frame; a ~1.5 s round trip is itself the wow moment.
-- B-roll: `copilot.py` speaking a wanted-level reaction aloud during the replay harness run (no game needed).
+- Milestone 3 money shot: the chat panel floating over the game while a conversation scrolls — one clean clip of asking something mid-chase and reading the reply on screen.
+- B-roll already in the can (2026-07-03 session): live wanted reactions with voice, the "Is the cops after me?" state-aware answer, and the model inferring the player's death from hp=0. If any of it wasn't captured on video, the replay harness can re-drive the reactions for pickup shots (clearly B-roll, not the gate).

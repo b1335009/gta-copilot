@@ -13,15 +13,15 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 ## Milestone 1 — Core loop (target: one 4-hour session)
 - [x] Phase 0: SHV + SHVDN3 installed, hello-world mod draws player health on screen live. (Gate PASS 2026-07-01)
 - [x] Phase 1: State reader polls natives (health, wanted level, position, vehicle), serializes JSON, prints to console. (Gate PASS 2026-07-02 — 334-line runtime proof incl. wanted 0→3 and respawn)
-- [x] Phase 2: JSON streams over local socket to the brain; brain reacts in text to a state change (wanted level up). (Code + replay PASS 2026-07-03; real hermes3:3b reactions proven on replay.)
-- Gate: Beshr sees the brain comment correctly on live gameplay. [RECORD] — NOT passed 2026-07-03 (live reactions were model-down fallbacks, Ollama HTTP 500 under VRAM pressure). Carried as item 1 of the Phase 3 checklist.
+- [x] Phase 2: JSON streams over local socket to the brain; brain reacts in text to a state change (wanted level up). (Code + replay PASS 2026-07-03.)
+- Gate: Beshr sees the brain comment correctly on live gameplay. [RECORD] — **PASSED 2026-07-03** (carried into Phase 3): live wanted 0→1 produced a real hermes3:3b comment, `"fallback": false`, during play.
 
 ## Milestone 2 — Voice (session 2)
-- [ ] Phase 3: Push-to-talk mic -> faster-whisper -> Hermes -> Piper TTS, round trip ~1.5s or better.
-- Gate: first spoken exchange during gameplay. [RECORD, do not script the reaction]
+- [x] Phase 3: Push-to-talk mic -> faster-whisper -> hermes3:3b -> Piper TTS. (PASS 2026-07-03. Measured time-to-first-audio ~5–7 s, over the ~1.5 s aspiration — latency work moved into Phase 4.)
+- Gate: first spoken exchange during gameplay. [RECORD, do not script the reaction] — **PASSED 2026-07-03**: multiple live exchanges, including state-aware answers ("1 wanted star" read off the live stream; player death inferred from hp=0).
 
 ## Milestone 3 — Overlay (session 3, short)
-- [ ] Phase 4: transparent always-on-top chat window over borderless GTA.
+- [ ] Phase 4: transparent always-on-top chat window over borderless GTA (+ voice latency tuning).
 - Gate: chat log readable during play.
 
 ## Milestone 4 — Actions (session 3/4)
@@ -30,6 +30,7 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - [ ] Phase 5c: heal on command.
 - Each action added one at a time, tested individually, logged. Whitelist edited by Claude Code only.
 - Gate: full payoff run — chase or firefight with state awareness, voice, and actions live. [RECORD, this is the hook clip]
+- North star (Beshr, 2026-07-03): the copilot embodied as a second in-game character — an AI-driven companion you can talk to that plays alongside you ("we both play"). Phase 5b is the seed: spawn + follow/protect first, then voice-directed behaviors (drive, cover, go to), all whitelist-gated one action at a time. Full design after the Milestone 4 gate.
 
 ## Milestone 5 — Nightly agents (v2, only after Milestone 4 gate passes)
 - [ ] Connect ONE nightly agent first (Antigravity scheduled task, or Codex, or Jules — pick one, not three).
