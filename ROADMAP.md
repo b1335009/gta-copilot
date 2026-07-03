@@ -41,11 +41,12 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - [x] v0.1.0-alpha SHIPPED 2026-07-03: https://github.com/b1335009/gta-copilot (public, MIT) — rewritten README, setup/run scripts, tagged release with the mod DLL asset (SHA256 `7A5A5831…` = commit 2421925; SHV/SHVDN not bundled — license).
 - Gate (open): a stranger with GTA V Enhanced goes from git clone to a talking copilot using only the README. First outside installer report closes it.
 
-## Milestone 5 — Nightly agents (v2, deferred behind Milestone 6 by owner decision)
-- [ ] Connect ONE nightly agent first (Antigravity scheduled task, or Codex, or Jules — pick one, not three).
-- [ ] Overnight loop: read PROJECT_STATE.md -> one checklist item -> open PR. No merges, ever.
-- [ ] Morning: Claude Code audits PR against review rules, Beshr approves merge.
+## Milestone 5 — Nightly agents (v2; infrastructure built 2026-07-03)
+- [x] Agent chosen: headless Claude Code via `npx @anthropic-ai/claude-code` (one agent, not three). Infrastructure shipped: `docs/NIGHTLY_AGENT.md` (the contract — one BACKLOG.md item → branch `nightly/…` → PR → stop; hard bans on master pushes, src/mod, governance files, builds/deploys), `BACKLOG.md` (8 nightly-sized items), `scripts/nightly.ps1` (preflight: aborts on dirty tree), `scripts/nightly-register.ps1` (03:30 scheduled task; Beshr runs it once to enable).
+- [ ] First supervised run: `schtasks /run /tn GtaCopilotNightly` (or run scripts/nightly.ps1 directly) while awake; verify it opens exactly one clean PR and stops.
+- [ ] Morning routine proven: Claude Code audits the PR against review rules, Beshr approves merge.
 - [ ] Add second/third agent only if the first one's PRs are consistently mergeable.
+- Note: branch protection intentionally NOT relied on — the nightly agent runs under the owner's credentials, so protection can't distinguish it; the controls are the contract, the dirty-tree preflight, and the mandatory morning audit before any merge.
 
 ## Out of scope until Milestone 5 is stable
 - Multiple nightly agents in parallel.

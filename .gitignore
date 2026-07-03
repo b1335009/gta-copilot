@@ -28,3 +28,6 @@ src/brain/logs/
 # OS
 Thumbs.db
 .DS_Store
+
+# nightly agent runs
+.nightly/
