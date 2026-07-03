@@ -11,8 +11,8 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - Non-negotiable review rules: natives on main script thread only; actions go request -> whitelist check -> execute; whitelist file is owned by Claude Code.
 
 ## Milestone 1 — Core loop (target: one 4-hour session)
-- [ ] Phase 0: SHV + SHVDN3 installed, hello-world mod draws player health on screen live.
-- [ ] Phase 1: State reader polls natives (health, wanted level, position, vehicle), serializes JSON, prints to console.
+- [x] Phase 0: SHV + SHVDN3 installed, hello-world mod draws player health on screen live. (Gate PASS 2026-07-01)
+- [x] Phase 1: State reader polls natives (health, wanted level, position, vehicle), serializes JSON, prints to console. (Gate PASS 2026-07-02 — 334-line runtime proof incl. wanted 0→3 and respawn)
 - [ ] Phase 2: JSON streams over local socket to Hermes; Hermes reacts in text to a state change (wanted level up).
 - Gate: Beshr sees Hermes comment correctly on live gameplay. [RECORD]
 
