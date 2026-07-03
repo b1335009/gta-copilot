@@ -49,6 +49,7 @@
     <Compile Include="GameStateReader.cs" />
     <Compile Include="HelloCopilot.cs" />
     <Compile Include="JsonWriter.cs" />
+    <Compile Include="StateStreamClient.cs" />
   </ItemGroup>
 
   <ItemGroup>

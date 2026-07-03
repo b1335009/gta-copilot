@@ -10,9 +10,10 @@ using GTA.UI;
 namespace GtaCopilot.Mod
 {
     /// <summary>
-    /// Phase 1 script entrypoint. All GTA/SHVDN state reads stay inside OnTick,
-    /// throttled by Game.GameTime. No timers, tasks, threads, sockets, or
-    /// background work are used in this phase.
+    /// Script entrypoint. All GTA/SHVDN state reads stay inside OnTick,
+    /// throttled by Game.GameTime. The only concurrency in the mod lives in
+    /// StateStreamClient (Claude Code owned); OnTick hands it pre-serialized
+    /// strings and never blocks on the network.
     /// </summary>
     public sealed class HelloCopilot : Script
     {
@@ -24,9 +25,11 @@ namespace GtaCopilot.Mod
         private const string StateFileName = "GtaCopilot.state.jsonl";
 
         private readonly GameStateReader stateReader;
+        private readonly StateStreamClient streamClient;
         private readonly string stateFilePath;
         private GameState currentState;
         private GameState lastEmittedState;
+        private string lastLoggedStreamStatus;
         private int lastPollGameTime = -1;
         private int lastEmitGameTime = -1;
         private int lastExceptionLogGameTime = -1;
@@ -35,10 +38,11 @@ namespace GtaCopilot.Mod
         {
             Interval = 0;
             stateReader = new GameStateReader();
+            streamClient = new StateStreamClient();
             stateFilePath = ResolveStateFilePath();
             Tick += OnTick;
             Aborted += OnAborted;
-            Console.WriteLine("GtaCopilot: Phase 1 state reader initialized; writing " + stateFilePath);
+            Console.WriteLine("GtaCopilot: state reader initialized; writing " + stateFilePath);
         }
 
         private void OnTick(object sender, EventArgs e)
@@ -53,6 +57,7 @@ namespace GtaCopilot.Mod
                     currentState = stateReader.Read();
                     lastPollGameTime = gameTime;
                     EmitIfNeeded(currentState, gameTime);
+                    LogStreamStatusIfChanged();
                 }
 
                 if (currentState != null)
@@ -94,8 +99,19 @@ namespace GtaCopilot.Mod
             }
 
             Console.WriteLine(line);
+            streamClient.EnqueueLine(line);
             lastEmittedState = state;
             lastEmitGameTime = gameTime;
+        }
+
+        private void LogStreamStatusIfChanged()
+        {
+            string streamStatus = streamClient.Status;
+            if (streamStatus != lastLoggedStreamStatus)
+            {
+                Console.WriteLine("GtaCopilot: stream " + streamStatus);
+                lastLoggedStreamStatus = streamStatus;
+            }
         }
 
         private static void DrawHealth(int health)
@@ -160,7 +176,8 @@ namespace GtaCopilot.Mod
         {
             Tick -= OnTick;
             Aborted -= OnAborted;
-            Console.WriteLine("GtaCopilot: Phase 1 state reader aborted.");
+            streamClient.Dispose();
+            Console.WriteLine("GtaCopilot: state reader aborted.");
         }
     }
 }
