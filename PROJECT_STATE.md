@@ -13,10 +13,13 @@ Beshr says "spawn a companion" (or "call backup", "bring a buddy") during play �
 - Brain-side (worker): deterministic intents for spawn_companion (no params): "spawn/call/bring (a) companion/buddy/backup", "back me up". Generalize the hardcoded waypoint confirmation into per-action confirm/fail phrases. Nack must be spoken gracefully ("Already got your boy with you").
 
 ## Worker checklist (Antigravity — next tasks):
-- [ ] 1. Extend `match_intent` for spawn_companion (no params) with tests; keep waypoint patterns intact.
-- [ ] 2. Generalize voice-loop action confirmations (per-action phrases instead of hardcoded "Waypoint set").
-- [ ] 3. Tests for the new intents + confirmation mapping; full suite stays green.
-- [ ] 4. Do NOT touch: `src/mod/**`, builds, deploys, port/protocol, ACTION_WHITELIST.md, ROADMAP.md, this file. REMINDER: a violation now voids the whole session (see 5a review).
+- [x] 1. `match_intent` extended for spawn_companion. Reviewed PASS — companion patterns checked before waypoint, empty params, no false positives ("back up the car" doesn't fire).
+- [~] 2. NOT DONE by worker — completed by reviewer: `confirmation_phrase`/`failure_phrase` in actions.py, wired into the voice loop (a companion ack would have spoken "Waypoint set — backup").
+- [~] 3. NOT DONE by worker — completed by reviewer: 6 new tests (67 total green). Worker claimed the phase complete with zero new tests.
+- [x] 4. Frozen files respected this time. Minor: left `test_json.cs`/`test_json.exe` scratch binaries in the repo root (removed by reviewer). Scratch experiments belong outside the repo.
+
+## Pending: 5b live gate [RECORD]
+Say "spawn a companion" / "call backup" during play → armed ped spawns beside you (blue blip), follows, and fights for you when attacked. Try a duplicate request too — it should refuse aloud ("You've already got your boy with you"). Deployed DLL: `65DE9832…` (20,480 bytes) = deterministic build of commit aaae502, verified post-copy 2026-07-03. Restart the copilot first to load the new matcher + phrases.
 
 ## Standing architecture (carried from earlier phases, still binding):
 - Action wire schema: brain → mod `{"type":"action","id":<int>,"action":"<name>","params":{...}}`; mod → brain ack `{"ack":<id>,"ok":bool,"err":str|null}`. Same socket (127.0.0.1:48651), UTF-8 newline framing. Mod validates against a compiled-in whitelist mirror, executes natives on the script thread only, ≤1 action/tick, bounded queues both directions.
