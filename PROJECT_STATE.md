@@ -2,29 +2,34 @@
 
 Owner: Claude Code (Fable 5). The worker agent — **Google Antigravity** as of Phase 3 (replaced Hermes, Beshr's call 2026-07-03) — reads this file, works the checklist, then writes results to HANDOFF.md. The worker never edits this file.
 
-## Current phase: 4
+## Current phase: 5a
 
-## Definition of done for this phase (Milestone 3 — overlay, short session):
-A transparent, always-on-top chat panel floats over borderless GTA showing the conversation live: player transcripts, copilot replies, and wanted reactions, color-coded. Gate: chat log readable during play. Secondary goal, same session: cut voice latency — time-to-first-audio (stt+llm+tts) from the measured ~5–7 s down to ≤5 s median, via shorter replies.
+## Definition of done for this phase (Milestone 4 begins — first action):
+Beshr says "set a waypoint to the airport" (or any gazetteer place) during play, and a map waypoint appears in-game. Every action runs the full discipline: request → whitelist check → execute on the main script thread → log + ack. Gate: one voice-commanded waypoint landing during live play.
 
 ## Architecture decisions for this phase (Claude Code, binding):
-- Still Python-only in `src/brain/` + `tests/`. `src/mod/**` remains FROZEN; no DLL work. Port/protocol unchanged. Evidence rule from Phase 3 stands (all HANDOFF evidence from committed code).
-- Overlay is a **separate always-on-top window drawn by the brain process** — NOT an in-game DirectX overlay (no mod changes, no injection). Tech: **tkinter** (stdlib, zero new deps): `-topmost`, `-alpha` ≈ 0.85, dark translucent panel, no focus stealing, shows the last ~8 lines color-coded (player / copilot / reaction / status).
-- GTA must run in **Borderless** display mode for the overlay to sit on top (also mitigates the swapchain-alloc crash class — see CRASH #3).
-- Threading restructure: tkinter mainloop OWNS the main thread; voice loop and state listener move to worker threads; UI updates flow through a thread-safe queue polled with `after()`. `--no-overlay` preserves today's console-only behavior.
-- Latency: voice replies shortened — system prompt ≤15 words, `num_predict: 24` (matches the reaction path). Log `time_to_audio_ms` (stt+llm+tts, excludes playback) per exchange. A single speech queue serializes ALL TTS output so the listener thread and voice loop can never clip each other's audio.
-- PTT default key changes to `right ctrl` (F8 collided with GTA's character-switch keys in the live session; right ctrl is unbound in-game).
-- RAM note for sessions on this machine: the page file must stay enabled (see CRASH #3 root cause); the pinned CPU model is a 2.5 GB tenant by design.
+- The mod changes for the FIRST time since Phase 2 — and all C# remains **Claude Code's work exclusively** (worker freeze on `src/mod/**` continues). Claude Code will build: a reverse command channel on the EXISTING TCP connection (brain writes newline-JSON action lines back on the same socket), a reader loop in the sender thread feeding a bounded inbound queue (16, drop-newest), OnTick drains ≤1 action per tick, validates against a compiled-in mirror of ACTION_WHITELIST.md, executes natives on the script thread ONLY, and emits an ack line `{"ack": <id>, "ok": true|false, "err": <str|null>}` on the outbound stream. New DLL: built, hash-recorded, and deployed by Claude Code/Beshr with the game closed.
+- Wire schema (brain → mod): `{"type":"action","id":<int>,"action":"set_waypoint","params":{"x":<float>,"y":<float>}}` — one line, same socket, same UTF-8 newline framing.
+- Intent detection is **DETERMINISTIC in 5a — the LLM never chooses actions or coordinates.** A committed gazetteer JSON (~15–20 named places with x,y) plus keyword/regex matching on the transcript ("waypoint to X", "take me to X", "mark X"). The LLM only phrases the spoken confirmation. The trust ladder grows one rung at a time; free-form LLM-invoked actions are a later, separately gated decision.
+- Brain-side whitelist mirror in Python; every request and ack logged to `src/brain/logs/actions-<date>.jsonl`. Unmatched or non-whitelisted intents are logged and politely refused aloud, never sent.
+- The listener thread owns the socket connection; it exposes a thread-safe `send_line()` bound to the live connection (drop + log if disconnected). Voice loop calls it via the orchestrator.
+- Overlay gets a new ACTION line type (orange) showing `→ set_waypoint(LSIA) … ✓ack`.
+- Standing rules: evidence from committed code only; page file stays enabled; Borderless display mode.
 
 ## Worker checklist (Antigravity — next tasks):
-- [ ] 1. `src/brain/overlay.py` — tkinter chat panel per the decisions above, fed by a thread-safe queue; keep the pure logic (line buffer, colors, trimming) separate from Tk so it's unit-testable without a display.
-- [ ] 2. Restructure `copilot.py`: Tk mainloop on main thread, voice loop + listener as workers, `--no-overlay` flag. All events (transcripts, replies, reactions, connect/disconnect) feed the overlay queue. Change PTT default to `right ctrl`.
-- [ ] 3. Latency: ≤15-word replies, `num_predict: 24` for voice, add `time_to_audio_ms` to `voice-<date>.jsonl`, single serialized speech queue (fixes concurrent-speak clipping).
-- [ ] 4. Phase 3 carry-over cleanups: dedupe `record_once()`/`wait_and_record()`; never speak the literal "[FALLBACK…]" string aloud (console-only); `transcriber` must resample or assert 16 kHz instead of silently ignoring `samplerate`.
-- [ ] 5. Unit tests with fakes for the overlay line-buffer logic and the speech queue; all existing 18 tests keep passing (`python -m unittest discover -s tests`).
-- [ ] 6. Do NOT touch: `src/mod/**`, DLL deploys, port/protocol (127.0.0.1:48651), ACTION_WHITELIST.md, ROADMAP.md, this file.
+- [ ] 1. `src/brain/actions.py` — gazetteer JSON (~15–20 LS places with coords) + pure intent matcher `transcript -> Optional[ActionRequest]` + Python whitelist mirror. Unit tests for matcher edge cases (no match, partial names, case).
+- [ ] 2. Action client plumbing: thread-safe `send_line()` on the listener connection; request/ack correlation by id with a 3 s timeout; log request+ack pairs to `actions-<date>.jsonl`.
+- [ ] 3. Wire into the voice loop: matched intent → send request → on ack speak a short confirmation ("Waypoint set — the airport"); on nack/timeout say it failed. Unmatched action-ish phrases fall through to normal chat.
+- [ ] 4. Overlay ACTION lines (orange) for request + ack/nack.
+- [ ] 5. Tests with fakes (fake ack server over a real localhost socket is fine); all existing 28 tests keep passing. Items 1–5 are all testable BEFORE the new DLL exists — do not wait on Claude Code's mod work.
+- [ ] 6. Do NOT touch: `src/mod/**` (still frozen for the worker), DLL deploys, port/protocol (127.0.0.1:48651), ACTION_WHITELIST.md, ROADMAP.md, this file.
 
 ## Review log (newest first):
+- 2026-07-03 PHASE GATE — MILESTONE 3 PASSED, advanced 4 → 5a. Antigravity's Phase 4 delivery reviewed PASS with one reviewer fix:
+  - Verified: 28/28 tests on reviewer's run; frozen files untouched; overlay.py clean two-layer design (pure ChatBuffer + Tk window, correct main-thread ownership, queue-fed with `after()` polling); SpeechQueue correctly serializes all TTS; recorder deduped; transcriber 16 kHz assert; fallback never spoken; `time_to_audio_ms` metric in place; PTT default now `right ctrl`.
+  - Gate evidence: Beshr's live screenshot — overlay floating over the game, conversation + three color-coded wanted reactions clearly readable.
+  - REVIEWER FIX (quality regression found via the same screenshot): the latency pass over-trimmed the system prompt to a bare fragment, losing the answer-the-player framing — the 3B model narrated the input ("Player greeting as Player: …") instead of replying. Root cause analysis: trimming the system prompt saved ~nothing (prompt eval was ~200 ms); `num_predict: 24` was the real lever and stays. Restored a compact persona prompt; A/B against live Ollama confirms direct in-character replies at ~1.7 s LLM time.
+  - Minor, non-blocking: in `--no-voice` mode reactions skip the overlay (speech-queue-gated push); fine for now, fold into Phase 5a item 4.
 - 2026-07-03 PHASE GATE — MILESTONE 1 AND MILESTONE 2 GATES BOTH PASSED, advanced 3 → 4. Live session evidence, verified by reviewer in listener-produced logs during play:
   - Milestone 1 (carried from Phase 2): `reactions-20260703.jsonl` t=1783101183921 — wanted 0→1 at live position produced "Hastily restore health and armory, Officer!" with `"fallback": false`, model hermes3:3b. Further live reactions at 1→2 and 2→3, zero fallbacks all session. The num_gpu:0 fix held with the game running.
   - Milestone 2: first spoken exchanges logged in `voice-20260703.jsonl` — 4+ full PTT→whisper→hermes3→Piper round trips. Highlight: player asked "Is the cops after me?" and the reply cited the LIVE injected state ("1 wanted star"); later, with state showing hp=0/200, "What happened now?" → "A cop caught a hint of your wanted level, ended up shootin' you down" — death inferred from raw state, no death detector exists in code.

@@ -21,8 +21,8 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - Gate: first spoken exchange during gameplay. [RECORD, do not script the reaction] — **PASSED 2026-07-03**: multiple live exchanges, including state-aware answers ("1 wanted star" read off the live stream; player death inferred from hp=0).
 
 ## Milestone 3 — Overlay (session 3, short)
-- [ ] Phase 4: transparent always-on-top chat window over borderless GTA (+ voice latency tuning).
-- Gate: chat log readable during play.
+- [x] Phase 4: transparent always-on-top chat window over borderless GTA (+ voice latency tuning). (PASS 2026-07-03.)
+- Gate: chat log readable during play. — **PASSED 2026-07-03**: Beshr's screenshot shows the overlay floating over the game with a live conversation and three color-coded wanted reactions, clearly readable.
 
 ## Milestone 4 — Actions (session 3/4)
 - [ ] Phase 5a: set waypoint by voice.
