@@ -2,28 +2,23 @@
 
 Owner: Claude Code (Fable 5). The worker agent — **Google Antigravity** as of Phase 3 (replaced Hermes, Beshr's call 2026-07-03) — reads this file, works the checklist, then writes results to HANDOFF.md. The worker never edits this file.
 
-## Current phase: 5c
+## Current phase: 6 (Milestone 6 — embodied copilot v1)
 
-## Definition of done for this phase (Milestone 4 finale — heal + the payoff run):
-Two parts, one session:
-1. Heal on command: "heal me" / "patch me up" during play → player health restored to max, acked, spoken confirmation.
-2. MILESTONE 4 GATE [RECORD — this is the hook clip]: the full payoff run — a chase or firefight with state awareness, voice chat, and all three actions used live (waypoint, companion, heal).
+## Definition of done for this phase:
+The companion becomes the copilot's body. Three parts:
+- 6a (DONE, Claude Code, deployed): companion telemetry — the state schema has an optional `companion` field (`null` or `{"health": int, "dead": bool}`); the listener validates it and includes it in the state summary the LLM already receives.
+- 6b (C# DONE + deployed; brain side is the worker's): voice commands `companion_stay` ("wait here") and `companion_follow` ("follow me"). Both nack "no companion active"/"companion is dead" when not applicable.
+- 6c (worker): persona merge — when a companion exists, the copilot speaks AS him: first person, aware of his own health from the companion field ("I'm hit bad, boss"). When no companion is spawned, it stays the voice-in-your-ear copilot.
 
-## Split of work — 5c EXCEPTION (Beshr's authorization, 2026-07-03):
-Beshr has authorized Antigravity to run the ENTIRE phase, including the mod change and deploy. This is a one-phase, tightly-bounded exception to the src/mod freeze — NOT a repeal. Bounds:
-- The ONLY permitted `src/mod/**` change: in `HelloCopilot.cs`, replace the `heal_player` nack case with real execution (`Game.Player.Character.Health = MaxHealth` guarded by null/Exists checks, on the script thread, ack ok). Nothing else in `src/mod/**` may change — any other C# diff still voids the session.
-- Build with MSBuild, record the DLL SHA256 + byte size in HANDOFF, deploy ONLY after verifying the game process is not running (`tasklist`), and verify source/target hashes match post-copy. Paste all hashes in HANDOFF — the reviewer will verify by deterministic rebuild afterward.
-- Everything is reviewed post-hoc by Claude Code before the Milestone 4 gate counts.
+GATE [RECORD]: live session — spawn backup, "wait here", walk away, "follow me", and the copilot comments on its own body's state (unprompted on companion death, or when asked "how are you holding up?").
 
-## Worker checklist — ALL DELIVERED, audited PASS 2026-07-03:
-- [x] 1. Heal intents + "Patched up — you're good." confirmation + tests. Heal checked first in match_intent; no false positive on "healthy food".
-- [x] 2. Companion matcher gap patterns + tests.
-- [x] 3. Bounded C# change verified EXACTLY in-scope (heal case swap + guarded ExecuteHealPlayer, incl. a sensible is-dead check); hashes documented; deployed DLL `F98EA88A…` (20,992 B) = reviewer's deterministic rebuild of the sources, byte-identical.
-- [x] 4. 70/70 tests confirmed on reviewer's independent run.
-- [x] 5. All freezes respected. First fully compliant worker session of the project.
-
-## Pending: MILESTONE 4 GATE [RECORD — the hook clip]
-The payoff run: one chase or firefight using everything live — wanted-level commentary, voice chat, "take me to the hospital", "call backup", "heal me". Restart the copilot first (new heal matcher). All three actions are deployed and armed.
+## Worker checklist (Antigravity — next tasks):
+- [ ] 1. Intents: companion_stay — "wait here", "stay here", "hold position", "stay put"; companion_follow — "follow me", "on me", "come with me", "keep up". Do NOT match bare "let's go" (too common in normal speech). Tests incl. false positives.
+- [ ] 2. Confirmation/failure phrases: stay → "Holding position."; follow → "Right behind you."; no-companion nack → "I'm not out there yet — call backup first."; dead-companion nack → something appropriately grim. Tests.
+- [ ] 3. Persona 6c in `chat.py`: when the latest game-state summary contains a companion (`companion_hp=` / `companion=DEAD`), the system prompt shifts to first-person embodied companion (he IS the guy walking next to the player, knows his own health); otherwise unchanged copilot persona. Also: wanted reactions and replies may reference companion state naturally. Keep prompts compact — num_predict stays the latency lever (see Phase 4 review).
+- [ ] 4. Companion-death awareness: when a state update flips companion to dead, push an overlay STATUS line and speak one short line (through the existing reaction/speech path — brain-side only, deterministic trigger, LLM phrases it).
+- [ ] 5. Tests for all of the above; full suite green (71 now); exact count in HANDOFF.
+- [ ] 6. Frozen (no exception this phase): `src/mod/**`, builds, deploys, port/protocol, ACTION_WHITELIST.md, ROADMAP.md, this file. The 6b C# is already built and deployed — DLL `4A90F539…` (22,528 B) = deterministic build of commit a96c095, deployed + verified — nothing mod-side left to do.
 
 ## Standing architecture (carried from earlier phases, still binding):
 - Action wire schema: brain → mod `{"type":"action","id":<int>,"action":"<name>","params":{...}}`; mod → brain ack `{"ack":<id>,"ok":bool,"err":str|null}`. Same socket (127.0.0.1:48651), UTF-8 newline framing. Mod validates against a compiled-in whitelist mirror, executes natives on the script thread only, ≤1 action/tick, bounded queues both directions.
@@ -35,6 +30,7 @@ The payoff run: one chase or firefight using everything live — wanted-level co
 - Build the 5b companion execution in C# (spawn one armed ped → player group → follow/protect; one-alive rule; nack duplicates), rebuild, hash, deploy with game closed.
 
 ## Review log (newest first):
+- 2026-07-03 MILESTONE 4 CLOSED (gate waived) + MILESTONE 6 OPENED, advanced 5c → 6. Beshr waived the payoff-run [RECORD] clip ("I know it works") — all three actions were individually verified in live play, so Milestone 4 is functionally complete; the hook clip stays available for any future session. Owner re-scope: Milestone 6 (embodied copilot) prioritized over Milestone 5 (nightly agents). Claude Code built and deployed 6a+6b same session: optional `companion` state field (schema is backward compatible — the field is optional so old jsonl lines and the fixture still parse; the listener MUST be restarted from current sources before the game runs, or every new-format line is rejected), companion_stay/companion_follow whitelisted (owner edit) and implemented (leave-group+stand-still / rejoin-group), both nack without a living companion. 71/71 tests. DLL `4A90F539…` deployed, byte-verified vs deterministic rebuild of commit a96c095.
 - 2026-07-03 PHASE 5b GATE — PASSED, advanced 5b → 5c. Evidence: `actions-20260703.jsonl` records `{"action":"spawn_companion","ack_ok":true}` from live play; Beshr confirmed the companion spawned (blue blip), followed, and fought. Deployed DLL `65DE9832…` = deterministic build of commit aaae502. Worker delivery was partial: matcher PASS, but checklist items 2–3 (per-action phrases, tests) were claimed and not done — completed by reviewer; noted in the 5c checklist as an explicit expectation. Live finding: strict patterns didn't match "give me another companion", so the duplicate-nack path never fired — 5c item 2. Amusing STT artifact for the blooper reel: "eat a bodyguard".
 - 2026-07-03 PHASE 5a GATE — PASSED, advanced 5a → 5b. Live evidence: Beshr said "Take me to the airport, set a waypoint" → overlay showed `set_waypoint(airport) ✓ack`, marker landed on the map, and `actions-20260703.jsonl` records `{"action":"set_waypoint","place_name":"airport","ack_ok":true}`. The full chain — voice → deterministic matcher → whitelist → socket → mod script thread → native → ack → spoken confirmation — worked on the first live attempt after deploy. (An earlier `timeout` entry predates the corrected-DLL deploy/restart.) Post-gate polish: each action event painted twice in the overlay (ActionClient's on_overlay callback + the voice loop's own pushes, the former also double-prefixing "→ →") — removed the callback; the voice loop's request/ack/nack/timeout pushes are the single source. Tests green.
 - 2026-07-03 Phase 5a review — split verdict: brain-side PASS, C# code PASS-after-corrections, process HARD FAIL (worker's second-ever deploy violation class, and the most serious to date).

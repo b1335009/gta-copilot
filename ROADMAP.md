@@ -27,12 +27,17 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 ## Milestone 4 — Actions (session 3/4)
 - [x] Phase 5a: set waypoint by voice. (**PASSED 2026-07-03**: live "Take me to the airport, set a waypoint" → mod ack `ok:true` logged, marker on map. Full request→whitelist→script-thread→ack chain worked first live try.)
 - [x] Phase 5b: spawn companion, follows and protects. (**PASSED 2026-07-03**: "spawn a companion" → armed ped, blue blip, group AI follow/defend; `spawn_companion ack_ok:true` logged live.)
-- [ ] Phase 5c: heal on command.
+- [x] Phase 5c: heal on command. (PASSED 2026-07-03 — worker delivery audited clean under bounded exception.)
 - Each action added one at a time, tested individually, logged. Whitelist edited by Claude Code only.
-- Gate: full payoff run — chase or firefight with state awareness, voice, and actions live. [RECORD, this is the hook clip]
-- North star (Beshr, 2026-07-03): the copilot embodied as a second in-game character — an AI-driven companion you can talk to that plays alongside you ("we both play"). Phase 5b is the seed: spawn + follow/protect first, then voice-directed behaviors (drive, cover, go to), all whitelist-gated one action at a time. Full design after the Milestone 4 gate.
+- Gate: full payoff run — chase or firefight with state awareness, voice, and actions live. [RECORD, this is the hook clip] — **Functionally complete; live clip WAIVED by Beshr 2026-07-03** ("I know it works"). All three actions verified individually in live play. The hook clip can be captured in any future session.
 
-## Milestone 5 — Nightly agents (v2, only after Milestone 4 gate passes)
+## Milestone 6 — Embodied copilot v1 (Beshr's north star; prioritized over Milestone 5 by owner decision 2026-07-03)
+- [x] Phase 6a: companion telemetry — mod streams companion {health, dead} in the state schema; brain surfaces it to the LLM context. (C# + listener done, deployed 2026-07-03.)
+- [ ] Phase 6b: companion voice commands — "wait here" (companion_stay), "follow me" (companion_follow). C#/whitelist done + deployed; brain intents are the open work.
+- [ ] Phase 6c: the persona merge — the copilot speaks AS the companion when he's spawned (first person, aware of his own health), copilot-in-your-ear otherwise.
+- Gate: live session — Beshr commands the companion by voice (stay → walk away → follow), and the copilot comments on the companion's state unprompted or when asked. [RECORD]
+
+## Milestone 5 — Nightly agents (v2, deferred behind Milestone 6 by owner decision)
 - [ ] Connect ONE nightly agent first (Antigravity scheduled task, or Codex, or Jules — pick one, not three).
 - [ ] Overnight loop: read PROJECT_STATE.md -> one checklist item -> open PR. No merges, ever.
 - [ ] Morning: Claude Code audits PR against review rules, Beshr approves merge.
