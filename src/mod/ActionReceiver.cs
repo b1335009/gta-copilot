@@ -181,12 +181,13 @@ namespace GtaCopilot.Mod
         // We only need to extract: id (int), action (string), params.x, params.y
         // ------------------------------------------------------------------
 
-        private static bool TryParseActionJson(string json, out int id, out string action, out float x, out float y)
+        private static bool TryParseActionJson(string json, out int id, out string action, out float x, out float y, out bool hasParams)
         {
             id = 0;
             action = null;
             x = 0;
             y = 0;
+            hasParams = false;
 
             // Verify it's an "action" type
             string typeValue = ExtractStringValue(json, "type");
@@ -222,15 +223,18 @@ namespace GtaCopilot.Mod
             string xStr = ExtractNumericValue(paramsSection, "x");
             string yStr = ExtractNumericValue(paramsSection, "y");
 
+            bool gotX = false, gotY = false;
+
             if (xStr != null)
             {
-                float.TryParse(xStr, NumberStyles.Float, CultureInfo.InvariantCulture, out x);
+                gotX = float.TryParse(xStr, NumberStyles.Float, CultureInfo.InvariantCulture, out x);
             }
             if (yStr != null)
             {
-                float.TryParse(yStr, NumberStyles.Float, CultureInfo.InvariantCulture, out y);
+                gotY = float.TryParse(yStr, NumberStyles.Float, CultureInfo.InvariantCulture, out y);
             }
 
+            hasParams = gotX && gotY;
             return true;
         }
 
