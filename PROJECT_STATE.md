@@ -23,17 +23,24 @@ TWO gates, both [RECORD]:
 - Evidence rule (new, permanent): every evidence file or transcript pasted in HANDOFF must be produced by code that is committed in the repo. Hand-written or draft-script output presented as run evidence is an automatic FAIL (see review log, `listener_output.txt`).
 
 ## Worker checklist (Antigravity — next tasks):
-- [ ] 0. Root-cause the live Ollama HTTP 500 from 2026-07-03 (all three live reactions were fallbacks). Reproduce with the game running if needed (`ollama ps`, Ollama server logs). Apply the fix per the GPU-budget decision above and document cause + fix in HANDOFF.
-- [ ] 1. CARRIED MILESTONE 1 GATE [RECORD]: live session — wanted increase prints a hermes3:3b reaction with `"fallback": false` in `reactions-<date>.jsonl` during live play (not replay). Paste the log line in HANDOFF.
-- [ ] 2. `src/brain/requirements.txt` + `.venv` setup; `src/brain/voice/recorder.py` — PTT hold-to-record (F8 default), unit-testable capture logic.
-- [ ] 3. `src/brain/voice/transcriber.py` — faster-whisper base.en int8 CPU; logs transcript + `stt_ms`.
-- [ ] 4. `src/brain/voice/chat.py` — generalize the Ollama client for conversational replies with latest game-state context, ≤ 25 words.
-- [ ] 5. `src/brain/voice/speaker.py` — Piper TTS + playback; `tts_ms`.
-- [ ] 6. `src/brain/copilot.py` — orchestrator: listener thread + voice loop + spoken wanted reactions + per-stage timing to `logs/voice-<date>.jsonl`.
-- [ ] 7. Unit tests with fakes for each stage (no network, no audio hardware in unit tests); the existing 6 brain tests must keep passing (`python -m unittest discover -s tests`).
-- [ ] 8. Do NOT touch: `src/mod/**` (frozen), DLL deploys, the port/protocol (127.0.0.1:48651, newline JSON), ACTION_WHITELIST.md, ROADMAP.md, this file.
+- [x] 0. Root-cause the live Ollama HTTP 500. DONE + reviewer-verified: VRAM contention; fix is `num_gpu: 0` (CPU inference) + `keep_alive: -1` preload. Reviewer found and fixed one bug in the fix (see review log: preload was loading the GPU runner).
+- [ ] 1. CARRIED MILESTONE 1 GATE [RECORD]: live session — wanted increase prints a hermes3:3b reaction with `"fallback": false` in `reactions-<date>.jsonl` during live play (not replay). Paste the log line in HANDOFF. Everything is set up — run: `.venv\Scripts\python.exe -m src.brain.copilot` from repo root, then start GTA. This is the ONLY open item; it needs Beshr at the wheel.
+- [x] 2. `src/brain/requirements.txt` + `.venv` setup; `src/brain/voice/recorder.py` — PTT hold-to-record (F8 default), unit-testable capture logic. (`.venv` created + deps installed by reviewer 2026-07-03.)
+- [x] 3. `src/brain/voice/transcriber.py` — faster-whisper base.en int8 CPU; logs transcript + `stt_ms`.
+- [x] 4. `src/brain/voice/chat.py` — generalize the Ollama client for conversational replies with latest game-state context, ≤ 25 words.
+- [x] 5. `src/brain/voice/speaker.py` — Piper TTS + playback; `tts_ms`. (Piper binary + en_US-lessac-medium installed to `models/piper/` by reviewer, sign-off granted.)
+- [x] 6. `src/brain/copilot.py` — orchestrator: listener thread + voice loop + spoken wanted reactions + per-stage timing to `logs/voice-<date>.jsonl`.
+- [x] 7. Unit tests with fakes for each stage — 18/18 pass on reviewer's independent run.
+- [x] 8. Frozen files untouched — verified via git diff (zero changes in `src/mod/**`, whitelist, roadmap, this file).
 
 ## Review log (newest first):
+- 2026-07-03 Phase 3 items 0, 2–8 review — PASS with one must-fix found and fixed by reviewer. Antigravity's first session: honest report, claims matched evidence (a welcome contrast to Phase 2).
+  - Verified independently: 18/18 unit tests pass on reviewer's own run; frozen files untouched (git diff clean on `src/mod/**`, whitelist, roadmap); all voice modules reviewed line-by-line — injectable backends, correct timing capture, sane fallback handling.
+  - HTTP 500 root cause CONFIRMED by reviewer: with the model unloaded, a default load goes 100% GPU (`ollama ps`); with `num_gpu: 0` it goes 100% CPU. CPU wanted-reaction latency measured 1399 ms wall — matches Antigravity's ~1.5 s claim.
+  - MUST-FIX (found by reviewer, fixed in `chat.py`): `OllamaChatBackend.preload()` omitted `options.num_gpu: 0`, so the "CPU preload" actually loaded the GPU runner and pinned it with `keep_alive: -1` — the exact VRAM-contention failure mode Phase 3 exists to prevent. Verified fixed: preload now lands 100% CPU, resident.
+  - Setup executed by reviewer (sign-off granted per the binding downloads decision): repo `.venv` with pinned deps; Piper 2023.11.14-2 + en_US-lessac-medium into `models/piper/` (release zip nests a `piper/` subdir — flattened, since `_find_piper_exe` would match the directory).
+  - Full pipeline smoke-tested offline with REAL backends (Piper-synthesized speech as input): STT transcribed perfectly (606 ms), hermes3:3b replied non-fallback (2566 ms), TTS 576 ms — total 3.7 s. NOTE: the CPU LLM stage alone busts the ~1.5 s soft round-trip target at 40 tokens; acceptable for the gates, tune afterwards (lower `num_predict`, or a ~1B model for voice replies).
+  - Minor, non-blocking: `record_once()` duplicates `wait_and_record()` wholesale; `_CPUOllamaReactionClient` copy-pastes its parent method; whisper backend ignores the `samplerate` arg (safe only while capture is fixed at 16 kHz); listener thread and voice loop can both call `speaker.speak()` concurrently and sounddevice will cut one off; a spoken LLM fallback reads the literal "[FALLBACK...]" string aloud. Fix opportunistically in Phase 4.
 - 2026-07-03 PHASE GATE — advanced 2 → 3 with the Milestone 1 gate CARRIED (not passed). Split verdict:
   - Brain code: PASS. `state_listener.py` / `replay_client.py` reviewed line-by-line — strict Phase 1 schema validation, correct fallback marking, dated jsonl logging, clean reconnect loop. All 6 unit tests pass (verified by reviewer run). Fixture `session-20260702.jsonl` verified byte-exact as the first 334 lines of the live game capture (SHA256 of prefix matches).
   - Replay path: PASS with real model output. `reactions-20260702.jsonl` shows genuine hermes3:3b lines (`fallback: false`) for wanted 0→1→2→3 across two replay runs.
@@ -56,7 +63,8 @@ TWO gates, both [RECORD]:
 - 2026-07-01 Items 2/3/4 (install verification) — BLOCKED, not failed (later resolved). No GTA V install existed on this machine at review time.
 
 ## Blockers:
-- Ollama HTTP 500 during live play (checklist item 0) blocks both gates. Endpoint verified healthy with the game closed — suspect VRAM contention while GTA Enhanced is running.
+- Both gates now need only a live game session with Beshr: start `.venv\Scripts\python.exe -m src.brain.copilot` (hold F8 to talk), launch GTA, commit a crime. IMPORTANT: verify hermes3:3b shows `100% CPU` in `ollama ps` before starting the game.
+- Round-trip latency is ~2.5–3.7 s (CPU LLM dominates), over the ~1.5 s soft target. Not a gate blocker; tuning options noted in the review log.
 - Deployed mod DLL state: `<GTA>/scripts/GtaCopilot.Mod.dll` = `f744cff8…` = deterministic build of HEAD sources, reviewer-verified 2026-07-03. No mod work needed or permitted in Phase 3.
 
 ## [RECORD] cues:

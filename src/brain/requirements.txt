@@ -1,0 +1,18 @@
+# GTA Copilot brain — Phase 3 dependencies
+# Install: python -m venv .venv && .venv\Scripts\activate && pip install -r src/brain/requirements.txt
+
+# PTT audio capture + TTS playback
+sounddevice>=0.5.0
+numpy>=1.24.0
+
+# Global hotkey for push-to-talk
+keyboard>=0.13.5
+
+# Speech-to-text (CPU, int8)
+faster-whisper>=1.1.0
+
+# Text-to-speech (Piper via subprocess, no pip package — uses piper-tts binary)
+# Piper is invoked as a subprocess; the binary is downloaded to models/piper/
+# Voice model: en_US-lessac-medium under models/piper/
+
+# Ollama communication (stdlib urllib only — no extra dep)
