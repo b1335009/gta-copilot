@@ -37,6 +37,10 @@ Human gate: Beshr approves all merges to main and confirms phase completion in-g
 - [ ] Phase 6c: the persona merge — the copilot speaks AS the companion when he's spawned (first person, aware of his own health), copilot-in-your-ear otherwise.
 - Gate: live session — Beshr commands the companion by voice (stay → walk away → follow), and the copilot comments on the companion's state unprompted or when asked. [RECORD]
 
+## Milestone 7 — Alpha release (opened 2026-07-03 per Beshr: "get the alpha out there")
+- [ ] v0.1.0-alpha on GitHub: rewritten README (install, troubleshooting, safety model), MIT LICENSE, scripts/setup.ps1 one-shot brain installer, scripts/run.ps1, tagged release with the mod DLL as the asset (SHV/SHVDN never bundled — license).
+- Gate: a stranger with GTA V Enhanced can go from git clone to a talking copilot using only the README.
+
 ## Milestone 5 — Nightly agents (v2, deferred behind Milestone 6 by owner decision)
 - [ ] Connect ONE nightly agent first (Antigravity scheduled task, or Codex, or Jules — pick one, not three).
 - [ ] Overnight loop: read PROJECT_STATE.md -> one checklist item -> open PR. No merges, ever.
