@@ -155,6 +155,16 @@ _COMPANION_PATTERNS: list[re.Pattern] = [
     re.compile(r"\bcall\s+backup\b", re.IGNORECASE),
     re.compile(r"\bsend\s+backup\b", re.IGNORECASE),
     re.compile(r"\bneed\s+backup\b", re.IGNORECASE),
+    re.compile(r"\b(?:give|get|bring)\s+me\s+(?:a|another)\s+(?:companion|bodyguard|buddy)\b", re.IGNORECASE),
+]
+
+
+# Patterns that trigger heal intent:
+_HEAL_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bheal\s+me\b", re.IGNORECASE),
+    re.compile(r"\bpatch\s+me\s+up\b", re.IGNORECASE),
+    re.compile(r"\bfix\s+me\s+up\b", re.IGNORECASE),
+    re.compile(r"\bi\s+need\s+health\b", re.IGNORECASE),
 ]
 
 
@@ -197,10 +207,20 @@ def _extract_place(transcript: str) -> Optional[str]:
 def match_intent(transcript: str) -> Optional[ActionRequest]:
     """Deterministic intent matcher: transcript → Optional[ActionRequest].
 
-    Currently supports ``set_waypoint`` and ``spawn_companion``.
+    Currently supports ``set_waypoint``, ``spawn_companion``, and ``heal_player``.
     Returns None if no action intent is detected.
     """
-    # 1. Check for companion / backup intent
+    # 1. Check for heal intent
+    for pattern in _HEAL_PATTERNS:
+        if pattern.search(transcript):
+            return ActionRequest(
+                id=_id_gen.next(),
+                action="heal_player",
+                params={},
+                place_name="health",
+            )
+
+    # 2. Check for companion / backup intent
     for pattern in _COMPANION_PATTERNS:
         if pattern.search(transcript):
             return ActionRequest(
@@ -210,7 +230,7 @@ def match_intent(transcript: str) -> Optional[ActionRequest]:
                 place_name="backup",
             )
 
-    # 2. Check for waypoint intent
+    # 3. Check for waypoint intent
     place = _extract_place(transcript)
     if place is not None:
         coords = GAZETTEER[place]
@@ -230,6 +250,8 @@ def confirmation_phrase(request: ActionRequest) -> str:
         return f"Waypoint set — {request.place_name}."
     if request.action == "spawn_companion":
         return "Backup's here — he's got your six."
+    if request.action == "heal_player":
+        return "Patched up — you're good."
     return f"{request.action} done."
 
 

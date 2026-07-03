@@ -417,6 +417,9 @@ class CompanionIntentTests(unittest.TestCase):
             "call backup",
             "I need backup right now!",
             "send backup please",
+            "give me a companion",
+            "get me another bodyguard",
+            "bring me a buddy",
         ]:
             intent = match_intent(phrase)
             self.assertIsNotNone(intent, phrase)
@@ -463,6 +466,35 @@ class ActionPhraseTests(unittest.TestCase):
         comp = ActionRequest(id=3, action="spawn_companion", params={}, place_name="backup")
         self.assertIn("already got", failure_phrase(comp, "companion already active"))
         self.assertIn("Couldn't do it", failure_phrase(comp, "queue full"))
+
+
+class HealIntentTests(unittest.TestCase):
+    def test_heal_player_phrases_match(self):
+        from src.brain.actions import match_intent
+        
+        for phrase in [
+            "heal me",
+            "patch me up",
+            "fix me up please",
+            "i need health",
+        ]:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "heal_player", phrase)
+            self.assertEqual(intent.params, {}, phrase)
+            
+    def test_heal_does_not_hijack_others(self):
+        from src.brain.actions import match_intent
+        
+        # Test it doesn't match false positives
+        self.assertIsNone(match_intent("healthy food"))
+        self.assertIsNone(match_intent("fix the car"))
+
+    def test_heal_confirmation_phrase(self):
+        from src.brain.actions import ActionRequest, confirmation_phrase
+        
+        heal = ActionRequest(id=4, action="heal_player", params={}, place_name="health")
+        self.assertEqual(confirmation_phrase(heal), "Patched up — you're good.")
 
 
 if __name__ == "__main__":

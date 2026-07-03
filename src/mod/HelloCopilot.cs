@@ -111,9 +111,8 @@ namespace GtaCopilot.Mod
                         break;
 
                     case "heal_player":
-                        // Whitelisted, but execution is gated to Phase 5c —
-                        // one action per phase, tested individually.
-                        err = "heal_player not enabled until Phase 5c";
+                        err = ExecuteHealPlayer();
+                        ok = err == null;
                         break;
 
                     case "spawn_companion":
@@ -197,6 +196,26 @@ namespace GtaCopilot.Mod
             companion = ped;
             Console.WriteLine("GtaCopilot: companion spawned (handle " +
                 ped.Handle.ToString(CultureInfo.InvariantCulture) + ")");
+            return null;
+        }
+
+        /// <summary>
+        /// Heals the player to max health.
+        /// </summary>
+        private string ExecuteHealPlayer()
+        {
+            Ped player = Game.Player.Character;
+            if (player == null || !player.Exists())
+            {
+                return "player ped unavailable";
+            }
+            if (player.IsDead)
+            {
+                return "player is already dead";
+            }
+
+            player.Health = player.MaxHealth;
+            Console.WriteLine("GtaCopilot: player healed to " + player.MaxHealth.ToString(CultureInfo.InvariantCulture));
             return null;
         }
 
