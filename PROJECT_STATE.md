@@ -2,7 +2,21 @@
 
 Owner: Claude Code (Fable 5). The worker agent — **Google Antigravity** as of Phase 3 (replaced Hermes, Beshr's call 2026-07-03) — reads this file, works the checklist, then writes results to HANDOFF.md. The worker never edits this file.
 
-## Current phase: 6 (Milestone 6 — embodied copilot v1)
+## Current phase: 7 (toward Milestone 8 — the autonomous teammate)
+
+## Phase 7a — verb library: BUILT 2026-07-03 (Claude Code), deploy pending game close
+Four new whitelisted verbs in the mod + deterministic intents in the brain: `companion_enter_vehicle` ("hop in"), `companion_drive_to_waypoint` ("you drive" / "drive me to the airport" — he takes the wheel), `companion_attack_target` ("take him out" — attacks the ped in your crosshair), `spawn_vehicle` ("spawn a T20" — 28-vehicle spoken catalog, engine-validated). 96/96 tests. NEXT LIVE SESSION also covers the M6 retest: "wait for me" → "follow me" → "wave" → companion death reaction.
+
+## Phase 7b — autonomy loop v0 (worker checklist, next):
+The propose→validate→execute pattern from Milestone 8, smallest real version:
+- [ ] 1. `src/brain/autonomy.py`: a tick (every ~4 s, listener-thread driven or its own thread reading SharedGameState) that evaluates DETERMINISTIC trigger conditions and produces candidate proposals. v0 triggers: player hp < 25% → propose `heal_player` (cooldown 60 s); player enters a vehicle while companion on foot → propose `companion_enter_vehicle` (cooldown 20 s); companion just died → already handled.
+- [ ] 2. The LLM's only autonomy role in v0: given a fired trigger + state, decide yes/no and phrase the spoken line ("Hold still, patching you up"). It cannot originate actions — triggers do.
+- [ ] 3. Rate limiter: global max 1 self-initiated action per 15 s, per-trigger cooldowns, everything logged to `actions-<date>.jsonl` with `"self_initiated": true`.
+- [ ] 4. `--no-autonomy` flag; default ON only after the first live session proves it isn't annoying.
+- [ ] 5. Tests with fakes for triggers, cooldowns, rate limiter; suite stays green (96 now).
+- [ ] 6. Frozen as always: `src/mod/**`, builds, deploys, whitelist, ROADMAP, this file.
+
+## Milestone 6 status (previous phase)
 
 ## Definition of done for this phase:
 The companion becomes the copilot's body. Three parts:
