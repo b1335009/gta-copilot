@@ -403,5 +403,67 @@ class OverlayActionTagTests(unittest.TestCase):
         self.assertEqual(TAG_COLOURS[LineTag.ACTION], "#f4845f")
 
 
+# -----------------------------------------------------------------------
+# Phase 5b: companion intent + per-action phrases
+# -----------------------------------------------------------------------
+
+class CompanionIntentTests(unittest.TestCase):
+    def test_spawn_companion_phrases_match(self):
+        from src.brain.actions import match_intent
+
+        for phrase in [
+            "spawn a companion",
+            "Spawn companion.",
+            "call backup",
+            "I need backup right now!",
+            "send backup please",
+        ]:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "spawn_companion", phrase)
+            self.assertEqual(intent.params, {}, phrase)
+
+    def test_companion_does_not_hijack_waypoints(self):
+        from src.brain.actions import match_intent
+
+        intent = match_intent("take me to the airport")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.action, "set_waypoint")
+
+    def test_unrelated_speech_matches_nothing(self):
+        from src.brain.actions import match_intent
+
+        for phrase in ["back up the car", "what's my backup plan", "hello there"]:
+            self.assertIsNone(match_intent(phrase), phrase)
+
+    def test_companion_wire_format_has_empty_params(self):
+        from src.brain.actions import match_intent
+        import json as _json
+
+        wire = _json.loads(match_intent("call backup").to_wire())
+        self.assertEqual(wire["action"], "spawn_companion")
+        self.assertEqual(wire["params"], {})
+        self.assertEqual(wire["type"], "action")
+
+
+class ActionPhraseTests(unittest.TestCase):
+    def test_confirmation_per_action(self):
+        from src.brain.actions import ActionRequest, confirmation_phrase
+
+        wp = ActionRequest(id=1, action="set_waypoint", params={"x": 1.0, "y": 2.0}, place_name="airport")
+        self.assertEqual(confirmation_phrase(wp), "Waypoint set — airport.")
+
+        comp = ActionRequest(id=2, action="spawn_companion", params={}, place_name="backup")
+        self.assertIn("six", confirmation_phrase(comp))
+        self.assertNotIn("Waypoint", confirmation_phrase(comp))
+
+    def test_failure_phrase_handles_already_active(self):
+        from src.brain.actions import ActionRequest, failure_phrase
+
+        comp = ActionRequest(id=3, action="spawn_companion", params={}, place_name="backup")
+        self.assertIn("already got", failure_phrase(comp, "companion already active"))
+        self.assertIn("Couldn't do it", failure_phrase(comp, "queue full"))
+
+
 if __name__ == "__main__":
     unittest.main()

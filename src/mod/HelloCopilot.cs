@@ -33,6 +33,7 @@ namespace GtaCopilot.Mod
         private readonly GameStateReader stateReader;
         private readonly ActionReceiver actionReceiver;
         private readonly StateStreamClient streamClient;
+        private Ped companion;
         private readonly string stateFilePath;
         private GameState currentState;
         private GameState lastEmittedState;
@@ -116,8 +117,8 @@ namespace GtaCopilot.Mod
                         break;
 
                     case "spawn_companion":
-                        // Placeholder — full implementation is Phase 5b
-                        err = "spawn_companion not yet implemented";
+                        err = ExecuteSpawnCompanion();
+                        ok = err == null;
                         break;
 
                     default:
@@ -135,6 +136,68 @@ namespace GtaCopilot.Mod
             string ackLine = ActionReceiver.BuildAck(action.id, ok, err);
             Console.WriteLine("GtaCopilot: ack -> " + ackLine);
             streamClient.EnqueueAck(ackLine);
+        }
+
+        /// <summary>
+        /// Spawn one armed companion ped that joins the player's group
+        /// (group AI provides follow + defend). Exactly one companion may be
+        /// alive at a time; respawn is allowed after it dies. Returns null on
+        /// success or an error string for the nack. Script thread only.
+        /// </summary>
+        private string ExecuteSpawnCompanion()
+        {
+            if (companion != null && companion.Exists() && !companion.IsDead)
+            {
+                return "companion already active";
+            }
+
+            if (companion != null)
+            {
+                companion.MarkAsNoLongerNeeded();
+                companion = null;
+            }
+
+            Ped player = Game.Player.Character;
+            if (player == null || !player.Exists())
+            {
+                return "player ped unavailable";
+            }
+
+            var model = new Model(PedHash.Bouncer01SMM);
+            model.Request(1000);
+            if (!model.IsLoaded)
+            {
+                return "companion model not loaded; try again";
+            }
+
+            Vector3 spawnPosition = player.Position + player.RightVector * 2.0f;
+            Ped ped = World.CreatePed(model, spawnPosition);
+            model.MarkAsNoLongerNeeded();
+            if (ped == null)
+            {
+                return "ped creation failed";
+            }
+
+            ped.IsPersistent = true;
+            ped.Armor = 100;
+            ped.Weapons.Give(WeaponHash.Pistol, 250, true, true);
+            ped.RelationshipGroup = player.RelationshipGroup;
+
+            int playerGroup = Function.Call<int>(Hash.GET_PLAYER_GROUP, Game.Player.Handle);
+            Function.Call(Hash.SET_PED_AS_GROUP_MEMBER, ped.Handle, playerGroup);
+            Function.Call(Hash.SET_PED_NEVER_LEAVES_GROUP, ped.Handle, true);
+            Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES, ped.Handle, 46, true); // BF_CanFightArmedPedsWhenNotArmed group defense
+
+            Blip blip = ped.AddBlip();
+            if (blip != null)
+            {
+                blip.Color = BlipColor.Blue;
+            }
+
+            companion = ped;
+            Console.WriteLine("GtaCopilot: companion spawned (handle " +
+                ped.Handle.ToString(CultureInfo.InvariantCulture) + ")");
+            return null;
         }
 
         /// <summary>
@@ -259,6 +322,11 @@ namespace GtaCopilot.Mod
         {
             Tick -= OnTick;
             Aborted -= OnAborted;
+            if (companion != null && companion.Exists())
+            {
+                companion.MarkAsNoLongerNeeded();
+                companion = null;
+            }
             streamClient.Dispose();
             Console.WriteLine("GtaCopilot: state reader aborted.");
         }

@@ -37,7 +37,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from .actions import ActionClient, match_intent
+from .actions import ActionClient, confirmation_phrase, failure_phrase, match_intent
 from .overlay import LineTag, OverlayMessage, OverlayWindow
 from .state_listener import (
     HOST,
@@ -383,13 +383,12 @@ def voice_loop(
                               f"{intent.action}({intent.place_name})…")
                 ack = action_client.send_action(intent)
                 if ack and ack.ok:
-                    confirm = f"Waypoint set — {intent.place_name}."
-                    speech_queue.enqueue(confirm, LineTag.ACTION)
+                    speech_queue.enqueue(confirmation_phrase(intent), LineTag.ACTION)
                     _push_overlay(overlay_queue, LineTag.ACTION,
                                   f"{intent.action}({intent.place_name}) ✓ack")
                     print(f"[ACTION] ack OK — spoken confirmation", flush=True)
                 elif ack and not ack.ok:
-                    fail_msg = f"Couldn't set the waypoint — {ack.err or 'mod refused'}."
+                    fail_msg = failure_phrase(intent, ack.err)
                     speech_queue.enqueue(fail_msg, LineTag.ACTION)
                     _push_overlay(overlay_queue, LineTag.ACTION,
                                   f"{intent.action}({intent.place_name}) ✗nack: {ack.err}")

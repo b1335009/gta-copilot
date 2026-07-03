@@ -149,6 +149,15 @@ _WAYPOINT_PATTERNS: list[re.Pattern] = [
 ]
 
 
+# Patterns that trigger companion intent:
+_COMPANION_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bspawn\s+(?:a\s+)?companion\b", re.IGNORECASE),
+    re.compile(r"\bcall\s+backup\b", re.IGNORECASE),
+    re.compile(r"\bsend\s+backup\b", re.IGNORECASE),
+    re.compile(r"\bneed\s+backup\b", re.IGNORECASE),
+]
+
+
 class _IDGenerator:
     """Thread-safe auto-incrementing action ID generator."""
 
@@ -188,20 +197,47 @@ def _extract_place(transcript: str) -> Optional[str]:
 def match_intent(transcript: str) -> Optional[ActionRequest]:
     """Deterministic intent matcher: transcript → Optional[ActionRequest].
 
-    Currently only supports ``set_waypoint``.  Returns None if no action
-    intent is detected or if the place isn't in the gazetteer.
+    Currently supports ``set_waypoint`` and ``spawn_companion``.
+    Returns None if no action intent is detected.
     """
-    place = _extract_place(transcript)
-    if place is None:
-        return None
+    # 1. Check for companion / backup intent
+    for pattern in _COMPANION_PATTERNS:
+        if pattern.search(transcript):
+            return ActionRequest(
+                id=_id_gen.next(),
+                action="spawn_companion",
+                params={},
+                place_name="backup",
+            )
 
-    coords = GAZETTEER[place]
-    return ActionRequest(
-        id=_id_gen.next(),
-        action="set_waypoint",
-        params={"x": coords["x"], "y": coords["y"]},
-        place_name=place,
-    )
+    # 2. Check for waypoint intent
+    place = _extract_place(transcript)
+    if place is not None:
+        coords = GAZETTEER[place]
+        return ActionRequest(
+            id=_id_gen.next(),
+            action="set_waypoint",
+            params={"x": coords["x"], "y": coords["y"]},
+            place_name=place,
+        )
+
+    return None
+
+
+def confirmation_phrase(request: ActionRequest) -> str:
+    """Spoken confirmation for a successful (acked) action."""
+    if request.action == "set_waypoint":
+        return f"Waypoint set — {request.place_name}."
+    if request.action == "spawn_companion":
+        return "Backup's here — he's got your six."
+    return f"{request.action} done."
+
+
+def failure_phrase(request: ActionRequest, err: Optional[str]) -> str:
+    """Spoken message for a nacked or failed action."""
+    if request.action == "spawn_companion" and err and "already active" in err:
+        return "You've already got your boy with you."
+    return f"Couldn't do it — {err or 'mod refused'}."
 
 
 def is_action_whitelisted(action: str) -> bool:
