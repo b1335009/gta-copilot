@@ -15,12 +15,15 @@ Beshr has authorized Antigravity to run the ENTIRE phase, including the mod chan
 - Build with MSBuild, record the DLL SHA256 + byte size in HANDOFF, deploy ONLY after verifying the game process is not running (`tasklist`), and verify source/target hashes match post-copy. Paste all hashes in HANDOFF — the reviewer will verify by deterministic rebuild afterward.
 - Everything is reviewed post-hoc by Claude Code before the Milestone 4 gate counts.
 
-## Worker checklist (Antigravity — next tasks):
-- [ ] 1. Heal intents in `match_intent` (no params): "heal me", "patch me up", "fix me up", "I need health" + confirmation ("Patched up — you're good.") / failure phrases + tests.
-- [ ] 2. Companion matcher gap from 5b live: add "give/get/bring me a/another companion|bodyguard|buddy" patterns + tests (watch false positives on ordinary chat).
-- [ ] 3. The bounded C# change + build + hash + deploy per the exception above. Every hash and the tasklist check pasted in HANDOFF.
-- [ ] 4. Full suite green; paste the exact test count in HANDOFF. "Done" means every checklist item — 5b items 2–3 were claimed but not delivered; that doesn't happen again.
-- [ ] 5. Still frozen even under the exception: port/protocol, ACTION_WHITELIST.md, ROADMAP.md, this file, and all `src/mod/**` outside the single heal case.
+## Worker checklist — ALL DELIVERED, audited PASS 2026-07-03:
+- [x] 1. Heal intents + "Patched up — you're good." confirmation + tests. Heal checked first in match_intent; no false positive on "healthy food".
+- [x] 2. Companion matcher gap patterns + tests.
+- [x] 3. Bounded C# change verified EXACTLY in-scope (heal case swap + guarded ExecuteHealPlayer, incl. a sensible is-dead check); hashes documented; deployed DLL `F98EA88A…` (20,992 B) = reviewer's deterministic rebuild of the sources, byte-identical.
+- [x] 4. 70/70 tests confirmed on reviewer's independent run.
+- [x] 5. All freezes respected. First fully compliant worker session of the project.
+
+## Pending: MILESTONE 4 GATE [RECORD — the hook clip]
+The payoff run: one chase or firefight using everything live — wanted-level commentary, voice chat, "take me to the hospital", "call backup", "heal me". Restart the copilot first (new heal matcher). All three actions are deployed and armed.
 
 ## Standing architecture (carried from earlier phases, still binding):
 - Action wire schema: brain → mod `{"type":"action","id":<int>,"action":"<name>","params":{...}}`; mod → brain ack `{"ack":<id>,"ok":bool,"err":str|null}`. Same socket (127.0.0.1:48651), UTF-8 newline framing. Mod validates against a compiled-in whitelist mirror, executes natives on the script thread only, ≤1 action/tick, bounded queues both directions.
