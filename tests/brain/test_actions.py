@@ -522,6 +522,74 @@ class ExpressionActionTests(unittest.TestCase):
         self.assertAlmostEqual(durations[0], 500.0, delta=1.0)
 
 
+class Phase7VerbTests(unittest.TestCase):
+    def test_enter_vehicle_phrases(self):
+        from src.brain.actions import match_intent
+
+        for phrase in ["get in the car", "hop in", "get in this white car"]:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "companion_enter_vehicle", phrase)
+
+    def test_drive_with_place_carries_coords(self):
+        from src.brain.actions import GAZETTEER, match_intent
+
+        intent = match_intent("drive me to the airport")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.action, "companion_drive_to_waypoint")
+        self.assertEqual(intent.params["x"], GAZETTEER["airport"]["x"])
+
+    def test_bare_drive_uses_waypoint(self):
+        from src.brain.actions import match_intent
+
+        for phrase in ["you drive", "take the wheel", "drive to the waypoint"]:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "companion_drive_to_waypoint", phrase)
+            self.assertEqual(intent.params, {}, phrase)
+
+    def test_plain_drive_to_place_is_still_a_waypoint(self):
+        from src.brain.actions import match_intent
+
+        # No "me/us" — historical behavior: sets a waypoint, doesn't hand over keys
+        intent = match_intent("drive to the casino")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.action, "set_waypoint")
+
+    def test_attack_phrases(self):
+        from src.brain.actions import match_intent
+
+        for phrase in ["attack him", "take him out", "light them up", "attack my target"]:
+            intent = match_intent(phrase)
+            self.assertIsNotNone(intent, phrase)
+            self.assertEqual(intent.action, "companion_attack_target", phrase)
+
+    def test_spawn_vehicle_from_catalog(self):
+        from src.brain.actions import match_intent
+
+        intent = match_intent("spawn a t20")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.action, "spawn_vehicle")
+        self.assertEqual(intent.params, {"name": "t20"})
+
+        intent = match_intent("give me a helicopter")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.action, "spawn_vehicle")
+        self.assertEqual(intent.params, {"name": "buzzard2"})
+
+    def test_spawn_companion_still_wins_over_vehicle(self):
+        from src.brain.actions import match_intent
+
+        # "spawn a companion" must never be treated as a vehicle request
+        intent = match_intent("spawn a companion")
+        self.assertEqual(intent.action, "spawn_companion")
+
+    def test_unknown_vehicle_matches_nothing(self):
+        from src.brain.actions import match_intent
+
+        self.assertIsNone(match_intent("spawn a batmobile"))
+
+
 class ActionPhraseTests(unittest.TestCase):
     def test_confirmation_per_action(self):
         from src.brain.actions import ActionRequest, confirmation_phrase

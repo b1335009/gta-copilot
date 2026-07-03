@@ -29,16 +29,18 @@ namespace GtaCopilot.Mod
             public readonly string action;
             public readonly float paramX;
             public readonly float paramY;
-            public readonly string paramName;      // companion_gesture: gesture id
+            public readonly bool hasCoords;         // params.x/y were present
+            public readonly string paramName;      // companion_gesture / spawn_vehicle
             public readonly float paramDurationMs; // companion_talking: talk duration
 
             public ActionRequest(int id, string action, float paramX, float paramY,
-                                 string paramName, float paramDurationMs)
+                                 bool hasCoords, string paramName, float paramDurationMs)
             {
                 this.id = id;
                 this.action = action;
                 this.paramX = paramX;
                 this.paramY = paramY;
+                this.hasCoords = hasCoords;
                 this.paramName = paramName;
                 this.paramDurationMs = paramDurationMs;
             }
@@ -53,7 +55,11 @@ namespace GtaCopilot.Mod
             "companion_stay",
             "companion_follow",
             "companion_gesture",
-            "companion_talking"
+            "companion_talking",
+            "companion_enter_vehicle",
+            "companion_drive_to_waypoint",
+            "companion_attack_target",
+            "spawn_vehicle"
         };
 
         private const int MaxQueuedActions = 16;
@@ -139,7 +145,14 @@ namespace GtaCopilot.Mod
                 return true;
             }
 
-            var request = new ActionRequest(id, actionName, x, y, gestureName, durationMs);
+            if (string.Equals(actionName, "spawn_vehicle", StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrEmpty(gestureName))
+            {
+                refuseAck = BuildAck(id, false, "spawn_vehicle requires params.name");
+                return true;
+            }
+
+            var request = new ActionRequest(id, actionName, x, y, hasParams, gestureName, durationMs);
 
             lock (queueLock)
             {

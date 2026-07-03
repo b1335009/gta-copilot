@@ -92,7 +92,27 @@ WHITELISTED_ACTIONS: set[str] = {
     "companion_follow",
     "companion_gesture",
     "companion_talking",
+    "companion_enter_vehicle",
+    "companion_drive_to_waypoint",
+    "companion_attack_target",
+    "spawn_vehicle",
 }
+
+# Spoken vehicle name → GTA model name. Intent matching stays deterministic;
+# the mod additionally validates the model via the game engine (Model.IsVehicle),
+# so an entry here can never spawn a non-vehicle.
+VEHICLE_CATALOG: dict[str, str] = {
+    "t20": "t20", "adder": "adder", "zentorno": "zentorno", "osiris": "osiris",
+    "entity": "entityxf", "turismo": "turismor", "cheetah": "cheetah",
+    "banshee": "banshee", "comet": "comet2", "elegy": "elegy2",
+    "sultan": "sultan", "kuruma": "kuruma", "insurgent": "insurgent",
+    "dominator": "dominator", "dukes": "dukes", "gauntlet": "gauntlet",
+    "sanchez": "sanchez", "bati": "bati", "akuma": "akuma",
+    "double t": "double", "hakuchou": "hakuchou", "faggio": "faggio",
+    "buzzard": "buzzard2", "helicopter": "buzzard2", "chopper": "buzzard2",
+    "phantom": "phantom", "dump truck": "dump", "bus": "bus", "taxi": "taxi",
+}
+_VEHICLE_NAMES_SORTED: list[str] = sorted(VEHICLE_CATALOG.keys(), key=len, reverse=True)
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +221,44 @@ _GESTURE_PATTERNS: list[re.Pattern] = [
     re.compile(r"\bnod\b", re.IGNORECASE),
 ]
 
+# Phase 7 verbs — companion vehicle/combat + vehicle spawning:
+_ENTER_VEHICLE_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bget\s+in\b.*\b(?:car|vehicle|truck|ride)\b", re.IGNORECASE),
+    re.compile(r"\bhop\s+in\b", re.IGNORECASE),
+    re.compile(r"\bget\s+in\s+with\s+me\b", re.IGNORECASE),
+]
+
+_DRIVE_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bdrive\s+(?:me|us)\b", re.IGNORECASE),
+    re.compile(r"\byou\s+drive\b", re.IGNORECASE),
+    re.compile(r"\btake\s+the\s+wheel\b", re.IGNORECASE),
+    re.compile(r"\bdrive\s+to\s+the\s+waypoint\b", re.IGNORECASE),
+]
+
+_ATTACK_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\battack\s+(?:him|her|them|that\s+guy|my\s+target)\b", re.IGNORECASE),
+    re.compile(r"\btake\s+(?:him|her|them)\s+out\b", re.IGNORECASE),
+    re.compile(r"\blight\s+(?:him|her|them)\s+up\b", re.IGNORECASE),
+    re.compile(r"\bget\s+(?:him|her|them)\b", re.IGNORECASE),
+]
+
+_SPAWN_VEHICLE_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bspawn\s+(?:a\s+|an\s+|the\s+)?(.+)", re.IGNORECASE),
+    re.compile(r"\bgive\s+me\s+(?:a\s+|an\s+|the\s+)?(.+)", re.IGNORECASE),
+]
+
+
+def _extract_vehicle(transcript: str) -> Optional[str]:
+    """Extract a catalog vehicle from a spawn-ish phrase. Returns model name."""
+    for pattern in _SPAWN_VEHICLE_PATTERNS:
+        m = pattern.search(transcript)
+        if m:
+            tail = m.group(1).strip().rstrip(".!?,;:").lower()
+            for name in _VEHICLE_NAMES_SORTED:
+                if name in tail:
+                    return VEHICLE_CATALOG[name]
+    return None
+
 
 class _IDGenerator:
     """Thread-safe auto-incrementing action ID generator."""
@@ -291,7 +349,66 @@ def match_intent(transcript: str) -> Optional[ActionRequest]:
             name = "nod" if "nod" in m.group(0).lower() else "wave"
             return make_gesture_request(name)
 
-    # 6. Check for waypoint intent
+    # 6. Phase 7: companion enters a vehicle
+    for pattern in _ENTER_VEHICLE_PATTERNS:
+        if pattern.search(transcript):
+            return ActionRequest(
+                id=_id_gen.next(),
+                action="companion_enter_vehicle",
+                params={},
+                place_name="the car",
+            )
+
+    # 7. Phase 7: companion drives ("drive me to the airport" carries coords;
+    # bare "you drive" uses the current map waypoint)
+    for pattern in _DRIVE_PATTERNS:
+        if pattern.search(transcript):
+            # "drive me to X" — waypoint patterns need "drive to" adjacency,
+            # so scan the tail after any "to" for a gazetteer place instead.
+            place = None
+            to_match = re.search(r"\bto\s+(.+)$", transcript, re.IGNORECASE)
+            if to_match:
+                tail = to_match.group(1).strip().rstrip(".!?,;:").lower()
+                for name in _PLACE_NAMES_SORTED:
+                    if name in tail:
+                        place = name
+                        break
+            if place is not None:
+                coords = GAZETTEER[place]
+                return ActionRequest(
+                    id=_id_gen.next(),
+                    action="companion_drive_to_waypoint",
+                    params={"x": coords["x"], "y": coords["y"]},
+                    place_name=place,
+                )
+            return ActionRequest(
+                id=_id_gen.next(),
+                action="companion_drive_to_waypoint",
+                params={},
+                place_name="the waypoint",
+            )
+
+    # 8. Phase 7: companion attacks the player's aimed target
+    for pattern in _ATTACK_PATTERNS:
+        if pattern.search(transcript):
+            return ActionRequest(
+                id=_id_gen.next(),
+                action="companion_attack_target",
+                params={},
+                place_name="your target",
+            )
+
+    # 9. Phase 7: spawn a vehicle from the catalog ("spawn a T20")
+    vehicle_model = _extract_vehicle(transcript)
+    if vehicle_model is not None:
+        return ActionRequest(
+            id=_id_gen.next(),
+            action="spawn_vehicle",
+            params={"name": vehicle_model},
+            place_name=vehicle_model,
+        )
+
+    # 10. Check for waypoint intent
     place = _extract_place(transcript)
     if place is not None:
         coords = GAZETTEER[place]
@@ -339,6 +456,14 @@ def confirmation_phrase(request: ActionRequest) -> str:
         return "Right behind you."
     if request.action == "companion_gesture":
         return "Hello there." if request.params.get("name") == "wave" else "Nodding."
+    if request.action == "companion_enter_vehicle":
+        return "Getting in."
+    if request.action == "companion_drive_to_waypoint":
+        return f"I'm driving — {request.place_name}, hold on."
+    if request.action == "companion_attack_target":
+        return "On it — engaging."
+    if request.action == "spawn_vehicle":
+        return f"One {request.place_name}, coming up."
     return f"{request.action} done."
 
 

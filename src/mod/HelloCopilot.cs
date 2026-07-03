@@ -144,6 +144,26 @@ namespace GtaCopilot.Mod
                         ok = err == null;
                         break;
 
+                    case "companion_enter_vehicle":
+                        err = ExecuteCompanionEnterVehicle();
+                        ok = err == null;
+                        break;
+
+                    case "companion_drive_to_waypoint":
+                        err = ExecuteCompanionDriveToWaypoint(action);
+                        ok = err == null;
+                        break;
+
+                    case "companion_attack_target":
+                        err = ExecuteCompanionAttackTarget();
+                        ok = err == null;
+                        break;
+
+                    case "spawn_vehicle":
+                        err = ExecuteSpawnVehicle(action.paramName);
+                        ok = err == null;
+                        break;
+
                     default:
                         err = "unknown action: " + action.action;
                         break;
@@ -262,6 +282,177 @@ namespace GtaCopilot.Mod
             Function.Call(Hash.SET_PED_AS_GROUP_MEMBER, companion.Handle, playerGroup);
             Function.Call(Hash.SET_PED_NEVER_LEAVES_GROUP, companion.Handle, true);
             Console.WriteLine("GtaCopilot: companion following");
+            return null;
+        }
+
+        /// <summary>
+        /// Companion enters the player's vehicle (or the nearest one) in any
+        /// free seat via the game's own enter-vehicle task. Script thread only.
+        /// </summary>
+        private string ExecuteCompanionEnterVehicle()
+        {
+            string err = RequireLivingCompanion();
+            if (err != null)
+            {
+                return err;
+            }
+
+            Ped player = Game.Player.Character;
+            Vehicle veh = player != null && player.IsInVehicle()
+                ? player.CurrentVehicle
+                : World.GetClosestVehicle(companion.Position, 20f);
+            if (veh == null || !veh.Exists())
+            {
+                return "no vehicle nearby";
+            }
+
+            companion.Task.ClearAll();
+            companion.Task.EnterVehicle(veh, VehicleSeat.Any);
+            Console.WriteLine("GtaCopilot: companion entering vehicle " + veh.DisplayName);
+            return null;
+        }
+
+        /// <summary>
+        /// Companion takes the driver seat and drives to the player's current
+        /// map waypoint. Nacks when there is no waypoint, no vehicle, or the
+        /// player is occupying the driver seat. Script thread only.
+        /// </summary>
+        private string ExecuteCompanionDriveToWaypoint(ActionReceiver.ActionRequest action)
+        {
+            string err = RequireLivingCompanion();
+            if (err != null)
+            {
+                return err;
+            }
+
+            Vector3 destination;
+            if (action.hasCoords)
+            {
+                // "drive me to the airport" — coords came with the request.
+                destination = new Vector3(action.paramX, action.paramY,
+                    companion.Position.Z);
+            }
+            else if (Game.IsWaypointActive)
+            {
+                destination = World.WaypointPosition;
+            }
+            else
+            {
+                return "no destination — set a waypoint or name a place";
+            }
+
+            Ped player = Game.Player.Character;
+            Vehicle veh = companion.IsInVehicle()
+                ? companion.CurrentVehicle
+                : (player != null && player.IsInVehicle()
+                    ? player.CurrentVehicle
+                    : World.GetClosestVehicle(companion.Position, 20f));
+            if (veh == null || !veh.Exists())
+            {
+                return "no vehicle nearby";
+            }
+
+            Ped driver = veh.Driver;
+            if (driver != null && driver.Exists() && driver.IsPlayer)
+            {
+                return "you're in the driver seat — slide over first";
+            }
+
+            if (veh.Driver != companion)
+            {
+                // Warp for v0 reliability; a walk-up enter task can strand the
+                // drive order if pathing fails mid-way.
+                companion.SetIntoVehicle(veh, VehicleSeat.Driver);
+            }
+
+            // 786603: normal road driving, obeys avoidance, ignores some lights.
+            Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
+                companion.Handle, veh.Handle,
+                destination.X, destination.Y, destination.Z,
+                25.0f, 786603, 12.0f);
+            Console.WriteLine("GtaCopilot: companion driving to waypoint");
+            return null;
+        }
+
+        /// <summary>
+        /// Companion attacks the ped the player is currently aiming at.
+        /// Refuses when there's no ped target, or the target is the companion
+        /// or the player. Script thread only.
+        /// </summary>
+        private string ExecuteCompanionAttackTarget()
+        {
+            string err = RequireLivingCompanion();
+            if (err != null)
+            {
+                return err;
+            }
+
+            Entity target = Game.Player.TargetedEntity;
+            Ped targetPed = target as Ped;
+            if (targetPed == null || !targetPed.Exists())
+            {
+                return "no ped in your crosshair — aim at the target";
+            }
+            if (targetPed == companion)
+            {
+                return "that's your own guy";
+            }
+            if (targetPed.IsPlayer)
+            {
+                return "not attacking you, boss";
+            }
+            if (targetPed.IsDead)
+            {
+                return "target is already down";
+            }
+
+            companion.Task.ClearAll();
+            companion.Task.FightAgainst(targetPed);
+            Console.WriteLine("GtaCopilot: companion attacking target ped " + targetPed.Handle);
+            return null;
+        }
+
+        /// <summary>
+        /// Spawn any vehicle by model name, validated by the game itself
+        /// (Model.IsVehicle) rather than a hand-kept list. The LLM never picks
+        /// the name — the brain's deterministic matcher does. Script thread only.
+        /// </summary>
+        private string ExecuteSpawnVehicle(string modelName)
+        {
+            if (string.IsNullOrEmpty(modelName))
+            {
+                return "spawn_vehicle requires a model name";
+            }
+
+            Ped player = Game.Player.Character;
+            if (player == null || !player.Exists())
+            {
+                return "player ped unavailable";
+            }
+
+            var model = new Model(modelName);
+            if (!model.IsValid || !model.IsVehicle)
+            {
+                return "not a known vehicle model: " + modelName;
+            }
+
+            model.Request(1500);
+            if (!model.IsLoaded)
+            {
+                return "vehicle model still loading; try again";
+            }
+
+            Vector3 spawnPosition = player.Position + player.ForwardVector * 6.0f;
+            Vehicle veh = World.CreateVehicle(model, spawnPosition, player.Heading + 90.0f);
+            model.MarkAsNoLongerNeeded();
+            if (veh == null)
+            {
+                return "vehicle creation failed";
+            }
+
+            veh.PlaceOnGround();
+            veh.MarkAsNoLongerNeeded();
+            Console.WriteLine("GtaCopilot: spawned vehicle " + modelName);
             return null;
         }
 
