@@ -63,7 +63,7 @@ namespace GtaCopilot.Mod
                 gameTime = Game.GameTime;
                 if (IsDue(gameTime, lastPollGameTime, PollIntervalMilliseconds))
                 {
-                    currentState = stateReader.Read();
+                    currentState = stateReader.Read(companion);
                     lastPollGameTime = gameTime;
                     EmitIfNeeded(currentState, gameTime);
                     LogStreamStatusIfChanged();
@@ -117,6 +117,16 @@ namespace GtaCopilot.Mod
 
                     case "spawn_companion":
                         err = ExecuteSpawnCompanion();
+                        ok = err == null;
+                        break;
+
+                    case "companion_stay":
+                        err = ExecuteCompanionStay();
+                        ok = err == null;
+                        break;
+
+                    case "companion_follow":
+                        err = ExecuteCompanionFollow();
                         ok = err == null;
                         break;
 
@@ -196,6 +206,58 @@ namespace GtaCopilot.Mod
             companion = ped;
             Console.WriteLine("GtaCopilot: companion spawned (handle " +
                 ped.Handle.ToString(CultureInfo.InvariantCulture) + ")");
+            return null;
+        }
+
+        /// <summary>
+        /// Companion holds position: leaves the player's group so group AI
+        /// stops pulling him along, then stands still. Script thread only.
+        /// </summary>
+        private string ExecuteCompanionStay()
+        {
+            string err = RequireLivingCompanion();
+            if (err != null)
+            {
+                return err;
+            }
+
+            Function.Call(Hash.REMOVE_PED_FROM_GROUP, companion.Handle);
+            companion.Task.ClearAll();
+            companion.Task.StandStill(-1);
+            Console.WriteLine("GtaCopilot: companion holding position");
+            return null;
+        }
+
+        /// <summary>
+        /// Companion resumes following: rejoins the player's group (group AI
+        /// resumes follow + defend). Script thread only.
+        /// </summary>
+        private string ExecuteCompanionFollow()
+        {
+            string err = RequireLivingCompanion();
+            if (err != null)
+            {
+                return err;
+            }
+
+            companion.Task.ClearAll();
+            int playerGroup = Function.Call<int>(Hash.GET_PLAYER_GROUP, Game.Player.Handle);
+            Function.Call(Hash.SET_PED_AS_GROUP_MEMBER, companion.Handle, playerGroup);
+            Function.Call(Hash.SET_PED_NEVER_LEAVES_GROUP, companion.Handle, true);
+            Console.WriteLine("GtaCopilot: companion following");
+            return null;
+        }
+
+        private string RequireLivingCompanion()
+        {
+            if (companion == null || !companion.Exists())
+            {
+                return "no companion active";
+            }
+            if (companion.IsDead)
+            {
+                return "companion is dead";
+            }
             return null;
         }
 

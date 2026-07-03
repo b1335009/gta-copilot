@@ -13,6 +13,7 @@ namespace GtaCopilot.Mod
         public readonly int wanted;
         public readonly PositionState pos;
         public readonly VehicleState vehicle;
+        public readonly CompanionState companion;
 
         public GameState(
             long t,
@@ -21,7 +22,8 @@ namespace GtaCopilot.Mod
             int armor,
             int wanted,
             PositionState pos,
-            VehicleState vehicle)
+            VehicleState vehicle,
+            CompanionState companion)
         {
             this.t = t;
             this.health = health;
@@ -30,6 +32,7 @@ namespace GtaCopilot.Mod
             this.wanted = wanted;
             this.pos = pos;
             this.vehicle = vehicle;
+            this.companion = companion;
         }
 
         /// <summary>
@@ -65,10 +68,22 @@ namespace GtaCopilot.Mod
 
             if (vehicle == null)
             {
-                return other.vehicle == null;
+                if (other.vehicle != null)
+                {
+                    return false;
+                }
+            }
+            else if (!vehicle.HasSameValues(other.vehicle))
+            {
+                return false;
             }
 
-            return vehicle.HasSameValues(other.vehicle);
+            if (companion == null)
+            {
+                return other.companion == null;
+            }
+
+            return companion.HasSameValues(other.companion);
         }
 
         public sealed class PositionState
@@ -87,6 +102,23 @@ namespace GtaCopilot.Mod
             public bool HasSameValues(PositionState other)
             {
                 return other != null && x == other.x && y == other.y && z == other.z;
+            }
+        }
+
+        public sealed class CompanionState
+        {
+            public readonly int health;
+            public readonly bool dead;
+
+            public CompanionState(int health, bool dead)
+            {
+                this.health = health;
+                this.dead = dead;
+            }
+
+            public bool HasSameValues(CompanionState other)
+            {
+                return other != null && health == other.health && dead == other.dead;
             }
         }
 

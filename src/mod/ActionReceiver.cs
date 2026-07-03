@@ -44,7 +44,9 @@ namespace GtaCopilot.Mod
         {
             "set_waypoint",
             "spawn_companion",
-            "heal_player"
+            "heal_player",
+            "companion_stay",
+            "companion_follow"
         };
 
         private const int MaxQueuedActions = 16;

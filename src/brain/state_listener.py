@@ -18,8 +18,10 @@ from typing import Any, Callable, Optional
 HOST = "127.0.0.1"
 PORT = 48651
 REQUIRED_STATE_KEYS = {"t", "health", "max_health", "armor", "wanted", "pos", "vehicle"}
+OPTIONAL_STATE_KEYS = {"companion"}  # Milestone 6: emitted by mod DLLs >= 6a; null or {health, dead}
 REQUIRED_POS_KEYS = {"x", "y", "z"}
 REQUIRED_VEHICLE_KEYS = {"name", "speed_kmh"}
+REQUIRED_COMPANION_KEYS = {"health", "dead"}
 DEFAULT_LOGS_DIR = Path(__file__).resolve().parent / "logs"
 DEFAULT_OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
 
@@ -52,7 +54,7 @@ def parse_state_line(raw_line: str) -> dict[str, Any]:
         raise ValueError("state line must be a JSON object")
     keys = set(state)
     missing = REQUIRED_STATE_KEYS - keys
-    unexpected = keys - REQUIRED_STATE_KEYS
+    unexpected = keys - REQUIRED_STATE_KEYS - OPTIONAL_STATE_KEYS
     if missing:
         raise ValueError(f"missing required keys: {', '.join(sorted(missing))}")
     if unexpected:
@@ -63,6 +65,9 @@ def parse_state_line(raw_line: str) -> dict[str, Any]:
     vehicle = state["vehicle"]
     if vehicle is not None and (not isinstance(vehicle, dict) or set(vehicle) != REQUIRED_VEHICLE_KEYS):
         raise ValueError("vehicle must be null or contain exactly name, speed_kmh")
+    companion = state.get("companion")
+    if companion is not None and (not isinstance(companion, dict) or set(companion) != REQUIRED_COMPANION_KEYS):
+        raise ValueError("companion must be null/absent or contain exactly health, dead")
     return state
 
 
@@ -110,10 +115,17 @@ def describe_vehicle(vehicle: Any) -> str:
 def format_summary(state: dict[str, Any]) -> str:
     vehicle = state["vehicle"]
     vehicle_text = "on-foot" if vehicle is None else f"{vehicle['name']}@{vehicle['speed_kmh']}km/h"
+    companion = state.get("companion")
+    if companion is None:
+        companion_text = ""
+    elif companion["dead"]:
+        companion_text = " companion=DEAD"
+    else:
+        companion_text = f" companion_hp={companion['health']}"
     return (
         f"state t={state['t']} wanted={state['wanted']} "
         f"hp={state['health']}/{state['max_health']} armor={state['armor']} "
-        f"vehicle={vehicle_text} pos=({_pos_text(state)})"
+        f"vehicle={vehicle_text} pos=({_pos_text(state)}){companion_text}"
     )
 
 

@@ -14,10 +14,11 @@ namespace GtaCopilot.Mod
         private static readonly DateTime UnixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         private const float MetersPerSecondToKilometersPerHour = 3.6f;
 
-        public GameState Read()
+        public GameState Read(Ped companionPed)
         {
             Player player = Game.Player;
             Ped ped = player == null ? null : player.Character;
+            GameState.CompanionState companion = ReadCompanion(companionPed);
 
             if (ped == null)
             {
@@ -28,7 +29,8 @@ namespace GtaCopilot.Mod
                     0,
                     player == null ? 0 : player.WantedLevel,
                     new GameState.PositionState(0.0f, 0.0f, 0.0f),
-                    null);
+                    null,
+                    companion);
             }
 
             Vector3 position = ped.Position;
@@ -44,7 +46,18 @@ namespace GtaCopilot.Mod
                     RoundToTenths(position.X),
                     RoundToTenths(position.Y),
                     RoundToTenths(position.Z)),
-                vehicle);
+                vehicle,
+                companion);
+        }
+
+        private static GameState.CompanionState ReadCompanion(Ped companionPed)
+        {
+            if (companionPed == null || !companionPed.Exists())
+            {
+                return null;
+            }
+
+            return new GameState.CompanionState(companionPed.Health, companionPed.IsDead);
         }
 
         private static GameState.VehicleState ReadVehicle(Ped ped)

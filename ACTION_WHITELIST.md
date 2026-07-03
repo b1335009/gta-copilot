@@ -11,6 +11,12 @@ Every action executes as: request -> whitelist check -> execute on main script t
 | spawn_companion | Spawn one armed ped, follow + protect player | none                    |
 | heal_player     | Restore player health to max                 | none                    |
 
+## Approved actions (Milestone 6 — embodied copilot, added by Claude Code 2026-07-03 per Beshr's re-scope):
+| id               | description                                        | params |
+|------------------|----------------------------------------------------|--------|
+| companion_stay   | Companion leaves group, holds current position     | none   |
+| companion_follow | Companion rejoins player group (follow + defend)   | none   |
+
 ## Explicitly not approved (do not implement):
 - Anything modifying this file programmatically
 - Anything spawning more than one entity per call

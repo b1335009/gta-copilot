@@ -40,9 +40,30 @@ namespace GtaCopilot.Mod
 
             AppendPropertyName(builder, "vehicle");
             AppendVehicle(builder, state.vehicle);
+            builder.Append(',');
+
+            AppendPropertyName(builder, "companion");
+            AppendCompanion(builder, state.companion);
             builder.Append('}');
 
             return builder.ToString();
+        }
+
+        private static void AppendCompanion(StringBuilder builder, GameState.CompanionState companion)
+        {
+            if (companion == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            builder.Append('{');
+            AppendPropertyName(builder, "health");
+            builder.Append(companion.health.ToString(CultureInfo.InvariantCulture));
+            builder.Append(',');
+            AppendPropertyName(builder, "dead");
+            builder.Append(companion.dead ? "true" : "false");
+            builder.Append('}');
         }
 
         private static void AppendPosition(StringBuilder builder, GameState.PositionState position)

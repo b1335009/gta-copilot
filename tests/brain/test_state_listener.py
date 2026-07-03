@@ -92,6 +92,28 @@ class StateListenerUnitTests(unittest.TestCase):
 
         self.assertEqual(cleaned, "Haste needed, head to the alley now!")
 
+    def test_companion_field_is_optional_and_validated(self):
+        # Milestone 6: mod DLLs >= 6a emit "companion"; older lines omit it.
+        with_companion = {**SAMPLE_ON_FOOT, "companion": {"health": 175, "dead": False}}
+        parsed = state_listener.parse_state_line(json.dumps(with_companion))
+        self.assertEqual(parsed["companion"], {"health": 175, "dead": False})
+        self.assertIn("companion_hp=175", state_listener.format_summary(parsed))
+
+        null_companion = {**SAMPLE_ON_FOOT, "companion": None}
+        parsed = state_listener.parse_state_line(json.dumps(null_companion))
+        self.assertNotIn("companion", state_listener.format_summary(parsed))
+
+        dead = {**SAMPLE_ON_FOOT, "companion": {"health": 0, "dead": True}}
+        self.assertIn("companion=DEAD", state_listener.format_summary(
+            state_listener.parse_state_line(json.dumps(dead))))
+
+        with self.assertRaisesRegex(ValueError, "companion"):
+            bad = {**SAMPLE_ON_FOOT, "companion": {"health": 175}}
+            state_listener.parse_state_line(json.dumps(bad))
+
+        with self.assertRaisesRegex(ValueError, "unexpected keys"):
+            state_listener.parse_state_line(json.dumps({**SAMPLE_ON_FOOT, "mystery": 1}))
+
     def test_append_raw_line_logs_to_dated_jsonl_file(self):
         with TemporaryDirectory() as tmp:
             log_path = state_listener.append_raw_line(
