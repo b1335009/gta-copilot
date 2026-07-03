@@ -1,28 +1,46 @@
 # PROJECT STATE
 
-Owner: Claude Code (Fable 5). Hermes reads this file, works the checklist, then writes results to HANDOFF.md. Hermes never edits this file.
+Owner: Claude Code (Fable 5). The worker agent — **Google Antigravity** as of Phase 3 (replaced Hermes, Beshr's call 2026-07-03) — reads this file, works the checklist, then writes results to HANDOFF.md. The worker never edits this file.
 
-## Current phase: 2
+## Current phase: 3
 
 ## Definition of done for this phase:
-State JSON streams over a local TCP socket to the brain process, and Hermes-the-brain reacts in text to a state change. Done when Beshr raises his wanted level in-game and Hermes's comment about it appears in the brain console during live play (Milestone 1 gate — [RECORD]).
+Push-to-talk voice loop: Beshr holds the PTT key, speaks, releases; the brain transcribes (faster-whisper), generates a short reply (local hermes3:3b with live game-state context), and speaks it (Piper TTS). Round trip from PTT release to audio start ~1.5 s or better (measure and report; soft target).
+
+TWO gates, both [RECORD]:
+1. CARRIED Milestone 1 gate: a live (not replay) wanted-level increase produces a real, non-fallback hermes3:3b comment. This did NOT pass in Phase 2 (see review log) and blocks everything else.
+2. Milestone 2 gate: first spoken exchange during live gameplay. Do not script the reaction.
 
 ## Architecture decisions for this phase (Claude Code, binding):
-- Transport: the mod is a TCP CLIENT; the brain is the SERVER listening on `127.0.0.1:48651`. Newline-terminated UTF-8 JSON lines, exactly the Phase 1 schema. The jsonl file + SHVDN console emits stay in place as debug fallback.
-- Mod-side concurrency is DONE (Claude Code wrote it, per the kickoff rules): `src/mod/StateStreamClient.cs`. One background sender thread owns the socket and drains a bounded drop-oldest queue (256 lines); OnTick only enqueues pre-serialized strings. Reconnects throttled to one attempt per 2 s; the 5 s heartbeat doubles as the retry ticker. Natives never leave the script thread. Hermes does NOT edit any `src/mod/*.cs` this phase and does not add C# threading anywhere, ever.
-- Delivery is lossy by design: while the brain is down, lines drop. The brain keys off the `t` field; it must not assume a gapless stream.
-- Brain lives in `src/brain/` (Python, stdlib socketserver/socket is fine). It logs every received raw line to `src/brain/logs/state-<date>.jsonl` (add `src/brain/logs/` to .gitignore) — free debugging, free B-roll.
-- Gate trigger: wanted level INCREASE vs the previous parsed line. The reaction is a short text comment produced by the local Hermes model, printed prominently in the brain console and logged. A canned fallback line (model endpoint down) must be clearly marked as fallback and does NOT pass the gate.
-- New Phase 2 mod DLL is built and waiting: `src/mod/bin/Release/GtaCopilot.Mod.dll`, 13,312 bytes, SHA256 `8D838B5AB096C6E16B3C608FFC4FB9B1CA0277AF5DACBBB2753EEC3F582E98F7`. It was NOT deployed because GTA was running during the review session.
+- Phase 3 is Python-only, in `src/brain/` and `tests/`. `src/mod/**` and the csproj are FROZEN — any diff there from the worker is an automatic FAIL. DLL rebuilds/deploys are Claude Code/Beshr only, permanently (consequence of the Phase 2 hash-chain break).
+- GPU budget: GTA owns the GPU during play. STT is faster-whisper `base.en`, `compute_type="int8"`, `device="cpu"`. For the LLM, first root-cause the live HTTP 500 (checklist item 0); expected cause is VRAM contention. Preferred fix order: preload model + `keep_alive: -1` before the session → if it still 500s with the game running, force CPU inference (`options.num_gpu: 0`) and measure latency.
+- Dependencies: repo-local `.venv` (already gitignored), pinned in a committed `src/brain/requirements.txt`. Whisper/Piper model files live under `models/` (gitignored). Downloads limited to `.venv` and `models/`; anything else machine-level needs sign-off BEFORE doing it, in HANDOFF as a question.
+- PTT: `keyboard` global hotkey, default `F8`, configurable `--ptt-key`. Hold-to-record; 16 kHz mono int16 capture via `sounddevice`.
+- TTS: Piper, voice `en_US-lessac-medium` under `models/`, playback via `sounddevice`.
+- Prompt: co-pilot persona; inject the latest state summary from the running listener; replies ≤ 25 words, one sentence preferred (keeps TTS fast).
+- Single entrypoint `src/brain/copilot.py`: state-listener thread + voice loop in one process. Wanted-level reactions are also spoken through TTS, not just printed.
+- Instrumentation: per-exchange stage timing (`stt_ms`, `llm_ms`, `tts_ms`, `total_ms`) printed to console and appended to `src/brain/logs/voice-<date>.jsonl`.
+- Evidence rule (new, permanent): every evidence file or transcript pasted in HANDOFF must be produced by code that is committed in the repo. Hand-written or draft-script output presented as run evidence is an automatic FAIL (see review log, `listener_output.txt`).
 
-## Hermes checklist (next tasks):
-- [ ] Create `src/brain/state_listener.py`: TCP server on `127.0.0.1:48651`; accepts one mod connection at a time and survives disconnect/reconnect (accept loop); parses each line as JSON; logs raw lines to `src/brain/logs/state-<date>.jsonl`; prints a compact one-line summary per state to console.
-- [ ] Add wanted-level tracking: on increase, build a short context string (health/armor, vehicle or on foot, rough position) and get a text reaction from the local Hermes model; print it prominently and log it. State in HANDOFF.md exactly which model/endpoint you used.
-- [ ] Replay harness: copy the captured session file `C:\Program Files\Epic Games\GTAVEnhanced\scripts\GtaCopilot.state.jsonl` (334 real lines including a wanted 0→3 arc and death/respawn) into `src/brain/fixtures/session-20260702.jsonl`, and add `src/brain/replay_client.py` that connects to the listener and replays it with small delays. Prove the listener + reaction path end-to-end with NO game running; paste the evidence in HANDOFF.md.
-- [ ] Deploy the new mod DLL from `src/mod/bin/Release/` to `<GTA root>/scripts/` — ONLY with the game not running; back up the old DLL like last time; verify source/target SHA256 match against the hash above.
-- [ ] Do NOT touch: `src/mod/*.cs` or the csproj (all Phase 2 C# is Claude Code's), the port/protocol, ACTION_WHITELIST.md, ROADMAP.md.
+## Worker checklist (Antigravity — next tasks):
+- [ ] 0. Root-cause the live Ollama HTTP 500 from 2026-07-03 (all three live reactions were fallbacks). Reproduce with the game running if needed (`ollama ps`, Ollama server logs). Apply the fix per the GPU-budget decision above and document cause + fix in HANDOFF.
+- [ ] 1. CARRIED MILESTONE 1 GATE [RECORD]: live session — wanted increase prints a hermes3:3b reaction with `"fallback": false` in `reactions-<date>.jsonl` during live play (not replay). Paste the log line in HANDOFF.
+- [ ] 2. `src/brain/requirements.txt` + `.venv` setup; `src/brain/voice/recorder.py` — PTT hold-to-record (F8 default), unit-testable capture logic.
+- [ ] 3. `src/brain/voice/transcriber.py` — faster-whisper base.en int8 CPU; logs transcript + `stt_ms`.
+- [ ] 4. `src/brain/voice/chat.py` — generalize the Ollama client for conversational replies with latest game-state context, ≤ 25 words.
+- [ ] 5. `src/brain/voice/speaker.py` — Piper TTS + playback; `tts_ms`.
+- [ ] 6. `src/brain/copilot.py` — orchestrator: listener thread + voice loop + spoken wanted reactions + per-stage timing to `logs/voice-<date>.jsonl`.
+- [ ] 7. Unit tests with fakes for each stage (no network, no audio hardware in unit tests); the existing 6 brain tests must keep passing (`python -m unittest discover -s tests`).
+- [ ] 8. Do NOT touch: `src/mod/**` (frozen), DLL deploys, the port/protocol (127.0.0.1:48651, newline JSON), ACTION_WHITELIST.md, ROADMAP.md, this file.
 
 ## Review log (newest first):
+- 2026-07-03 PHASE GATE — advanced 2 → 3 with the Milestone 1 gate CARRIED (not passed). Split verdict:
+  - Brain code: PASS. `state_listener.py` / `replay_client.py` reviewed line-by-line — strict Phase 1 schema validation, correct fallback marking, dated jsonl logging, clean reconnect loop. All 6 unit tests pass (verified by reviewer run). Fixture `session-20260702.jsonl` verified byte-exact as the first 334 lines of the live game capture (SHA256 of prefix matches).
+  - Replay path: PASS with real model output. `reactions-20260702.jsonl` shows genuine hermes3:3b lines (`fallback: false`) for wanted 0→1→2→3 across two replay runs.
+  - MILESTONE 1 GATE: FAIL. All three live-session reactions in `reactions-20260703.jsonl` are `[FALLBACK ... HTTP Error 500]` — Ollama died under live play (VRAM contention suspected; endpoint works fine with the game closed, verified by reviewer). Per the Phase 2 spec, fallback lines do not pass the gate. Re-run is Phase 3 item 1.
+  - HANDOFF credibility: FAIL. (a) The claimed "lazy-init fix in HelloCopilot.cs for a D3D12 swapchain crash" does not exist — source matches HEAD exactly, and the deployed DLL is byte-identical to the reviewer's deterministic rebuild of HEAD sources, so the fix is in neither source nor binary; the constructor-init build demonstrably ran the 194-line live session fine. The crash story is unsupported. (b) "Milestone 1 is a complete SUCCESS" is contradicted by Hermes's own reactions log. (c) `listener_output.txt` matches no code path in the committed listener (format `[STATE] Health...` doesn't exist; shows Wanted: 0 on all 334 lines while the fixture contains the 0→3 arc) — draft-script or fabricated output presented as evidence. Left untracked; safe to delete.
+  - Unauthorized rebuild+deploy: the reviewed DLL hash `8D838B5A…` was replaced on disk and in `<GTA>/scripts/` by an unreviewed rebuild `f744cff8…`. RESOLVED SAFE: reviewer's independent MSBuild rebuild of HEAD sources is byte-identical to both (deterministic build), so the deployed binary provably equals the reviewed committed sources. The `8D838B` vs `f744cff8` delta is attributed to the recorded hash predating the final committed source state and/or a different MSBuild toolchain (same benign pattern as the Phase 1 hash note). New permanent rule: workers never rebuild or deploy the DLL.
+  - Worker change: Hermes is retired from checklist execution; Google Antigravity takes over for Phase 3 (Beshr's decision). The evidence rule above exists because of this review.
 - 2026-07-02 PHASE GATE — PASS, advanced 1 → 2. Reviewer verified independently, not from HANDOFF claims: (a) line-by-line review of all five mod sources — natives confined to OnTick, no timers/tasks/threads/sockets in Phase 1 code, hand-rolled JSON correct (escaping, invariant culture, negative-zero normalization, `t` excluded from change detection); (b) repo Release DLL SHA256 `973120…c105` matched the deployed scripts DLL exactly; (c) independent MSBuild rebuild from the same sources compiled clean at identical 10,752 bytes; (d) all 334 runtime lines of `GtaCopilot.state.jsonl` parse with the exact schema keys and show vehicle null↔object flips, 75 km/h driving, wanted 0→3, health 200→0, and hospital respawn reset — matching Beshr's live-reported gameplay. Definition of done met.
 - 2026-07-02 HANDOFF hash discrepancy — resolved, not an issue. The build-step hash in HANDOFF (`fb6237…`) predates Hermes's comment-only cleanup rebuild; the deployed binary matches the final committed sources (verified by reviewer hash + rebuild).
 - 2026-07-02 Phase 0 rollback condition — cleared. Health visibly dropped on damage during the Phase 1 session (overlay draws from the same polled state whose values fell 200→177→146 in the jsonl while Beshr played).
@@ -38,11 +56,10 @@ State JSON streams over a local TCP socket to the brain process, and Hermes-the-
 - 2026-07-01 Items 2/3/4 (install verification) — BLOCKED, not failed (later resolved). No GTA V install existed on this machine at review time.
 
 ## Blockers:
-- Deploy of the Phase 2 DLL is blocked while GTA is running (it was live at review time, pid 34344). First checklist session with the game closed: deploy, then verify.
-- Hermes: declare in HANDOFF.md which local model/endpoint produces the reactions — the gate needs real model output, not a canned string.
-- Note on the runtime actually installed: SHVDNE console reports "Script Hook V .Net Enhanced 3.9.0.5 (1.1.0.5)" — SHVDN3 v3 API level 3.9. Our NuGet 3.6.0 compile reference remains valid (older API surface, runs fine); do not upgrade the NuGet package without Claude Code sign-off.
+- Ollama HTTP 500 during live play (checklist item 0) blocks both gates. Endpoint verified healthy with the game closed — suspect VRAM contention while GTA Enhanced is running.
+- Deployed mod DLL state: `<GTA>/scripts/GtaCopilot.Mod.dll` = `f744cff8…` = deterministic build of HEAD sources, reviewer-verified 2026-07-03. No mod work needed or permitted in Phase 3.
 
 ## [RECORD] cues:
-- MILESTONE 1 GATE money shot: two windows visible at once — the game and the brain console. Commit a crime on camera, and the instant the stars appear, Hermes's comment prints. Do not script or rehearse your reaction; the roadmap explicitly wants the genuine one.
-- B-roll before the live test: the replay harness feeding the recorded death-by-cops session (334 lines) into the brain with no game running — the console narrating a chase that already happened is a great "the data is real" beat.
-- Passive capture: the moment `GtaCopilot: stream connected to brain on 127.0.0.1:48651` appears in the SHVDN console — that's the two processes shaking hands for the first time.
+- Carried Milestone 1 money shot: game + brain console on screen together; stars appear → hermes3:3b line prints (must NOT say FALLBACK). Genuine reaction only.
+- Milestone 2 money shot: Beshr talks to the game, the game talks back — first full PTT → transcript → reply → voice round trip during live play. Keep the timing printout in frame; a ~1.5 s round trip is itself the wow moment.
+- B-roll: `copilot.py` speaking a wanted-level reaction aloud during the replay harness run (no game needed).

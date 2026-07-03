@@ -23,6 +23,7 @@ models/
 
 # logs
 *.log
+src/brain/logs/
 
 # OS
 Thumbs.db
